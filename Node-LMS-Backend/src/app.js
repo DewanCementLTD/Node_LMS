@@ -1,0 +1,30 @@
+import express from 'express';
+import cors from 'cors';
+import routes from './routes/index.js';
+import { requestLogger } from './middlewares/requestLogger.middleware.js';
+
+const app = express();
+
+// 1. Security & Parsing Middleware
+app.use(cors()); // Allow frontend to talk to this API
+app.use(express.json()); // Parse JSON body payloads
+
+// 2. Request logger
+app.use(requestLogger);
+
+// 3. Mount all routes
+app.use('/', routes);
+
+
+
+
+// 3. Global Error Handler (Catches all `next(error)` calls)
+app.use((err, req, res, next) => {
+  console.error('Unhandled Error:', err.message || err);
+  res.status(500).json({ 
+    status: "ERROR", 
+    message: "Internal Server Error" 
+  });
+});
+
+export default app;
