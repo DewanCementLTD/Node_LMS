@@ -8,13 +8,15 @@ import {
 import { resolveFilterLists } from "../services/adminRights.service.js";
 import { toList } from "../utils/conversionHelpers.js";
 
-export const locationBatch = async (req, res, next) => {
+// POST /auth/location/batch — mirrors FastAPI post_location_batch:
+// success → { body: { inserted: <count> } }, error → 500 { detail: <msg> }.
+export const locationBatch = async (req, res) => {
   try {
     const { card_no, locations } = res.locals.validated.body;
-    const result = await batchInsertLocations(card_no, locations);
-    res.json(result);
-  } catch (err) {
-    next(err);
+    const inserted = await batchInsertLocations(card_no, locations);
+    return res.json({ body: { inserted } });
+  } catch (e) {
+    return res.status(500).json({ detail: String(e.message ?? e) });
   }
 };
 

@@ -5,7 +5,10 @@ export const getLeaveBalancesData = async (card_no) => {
   try {
     connection = await getDirectConnection();
     const sql = `
-        SELECT leave_type, leave_desc, balance
+        SELECT 
+          leave_type AS "leave_type", 
+          leave_desc AS "leave_desc", 
+          balance AS "balance"
         FROM ALL_LEAVE_BAL_V
         WHERE card_no = :card_no
     `;
@@ -22,14 +25,14 @@ export const getLeaveStatusData = async (card_no) => {
     connection = await getDirectConnection();
     const sql = `
       SELECT
-        la.LEAVE_APPLICATION_PK                    AS id,
-        TO_CHAR(la.LEAVE_DATE_FROM, 'YYYY-MM-DD')  AS from_date,
-        TO_CHAR(la.LEAVE_DATE_TO,   'YYYY-MM-DD')  AS to_date,
-        la.LEAVE_DAYS                              AS days,
-        la.REASON                                  AS reason,
-        la.APPROVAL_STATUS                         AS status,
-        TO_CHAR(la.APPROVAL_DATE, 'YYYY-MM-DD')    AS approval_date,
-        la.ENTRY_DATE                              AS applied_on
+        la.LEAVE_APPLICATION_PK                    AS "id",
+        TO_CHAR(la.LEAVE_DATE_FROM, 'YYYY-MM-DD')  AS "from_date",
+        TO_CHAR(la.LEAVE_DATE_TO,   'YYYY-MM-DD')  AS "to_date",
+        la.LEAVE_DAYS                              AS "days",
+        la.REASON                                  AS "reason",
+        la.APPROVAL_STATUS                         AS "status",
+        TO_CHAR(la.APPROVAL_DATE, 'YYYY-MM-DD')    AS "approval_date",
+        la.ENTRY_DATE                              AS "applied_on"
       FROM LEAVE_APPLICATION la
       JOIN EMPLOYEE e ON e.EMP_PK = la.EMP_FK
       WHERE TO_CHAR(e.CARD_NO) = :card_no
@@ -51,7 +54,11 @@ export const applyLeaveData = async (card_no, body) => {
     // Resolve EMP_FK and org scope from card_no
     const empRow = (
       await connection.execute(
-        `SELECT EMP_PK, COMPC, BRNCH FROM EMPLOYEE WHERE TO_CHAR(CARD_NO) = :card_no FETCH FIRST 1 ROWS ONLY`,
+        `SELECT 
+          EMP_PK AS "emp_pk", 
+          COMPC AS "compc", 
+          BRNCH AS "brnch" 
+        FROM EMPLOYEE WHERE TO_CHAR(CARD_NO) = :card_no FETCH FIRST 1 ROWS ONLY`,
         { card_no },
         { outFormat: 4002 }
       )

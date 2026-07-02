@@ -5,6 +5,42 @@ import {
   buildStringInClause,
 } from "../utils/buildInClause.js";
 
+// Format a Date's components (local or UTC) as a naive Oracle timestamp string
+// "YYYY-MM-DD HH24:MI:SS.FF6" — no timezone, matching Python's naive datetime.
+const fmtNaive = (d, useUtc) => {
+  const p2 = (n) => String(n).padStart(2, '0');
+  const y = useUtc ? d.getUTCFullYear() : d.getFullYear();
+  const mo = (useUtc ? d.getUTCMonth() : d.getMonth()) + 1;
+  const da = useUtc ? d.getUTCDate() : d.getDate();
+  const h = useUtc ? d.getUTCHours() : d.getHours();
+  const mi = useUtc ? d.getUTCMinutes() : d.getMinutes();
+  const s = useUtc ? d.getUTCSeconds() : d.getSeconds();
+  const ms = useUtc ? d.getUTCMilliseconds() : d.getMilliseconds();
+  return `${y}-${p2(mo)}-${p2(da)} ${p2(h)}:${p2(mi)}:${p2(s)}.${String(ms).padStart(3, '0')}000`;
+};
+
+// Resolve an incoming `recorded_at` into a naive Oracle timestamp string, byte-
+// for-byte matching the FastAPI backend (repositories/location_repository.py):
+//   - missing        → current UTC time (datetime.utcnow)
+//   - ISO string     → the literal wall-clock, with any Z/±offset STRIPPED (not
+//                       converted) — mirrors datetime.fromisoformat(...).replace(tzinfo=None)
+//   - unparseable    → current LOCAL time (datetime.now)
+// Bound as a string via TO_TIMESTAMP so the stored value never depends on the
+// Oracle session time zone (a raw JS Date bind would).
+const resolveRecordedAt = (recorded_at) => {
+  if (!recorded_at) return fmtNaive(new Date(), true); // utcnow()
+
+  let s = String(recorded_at).trim();
+  // Drop the timezone designator: Z / z / ±HH:MM / ±HHMM at the very end.
+  s = s.replace(/(?:[Zz]|[+-]\d{2}:?\d{2})$/, '');
+  s = s.replace(/[Tt]/, ' ').trim();
+  if (!s.includes('.')) s += '.000000';
+
+  // Keep only literal "YYYY-MM-DD HH:MM:SS.ffffff"; anything else → local now.
+  if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+$/.test(s)) return fmtNaive(new Date(), false);
+  return s;
+};
+
 export const batchInsertLocations = async (card_no, locations) => {
   if (!Array.isArray(locations) || locations.length === 0) {
     return 0;
@@ -17,17 +53,7 @@ export const batchInsertLocations = async (card_no, locations) => {
     connection = await getDirectConnection();
 
     for (const loc of locations) {
-      let recordedAt;
-
-      try {
-        recordedAt = loc.recorded_at ? new Date(loc.recorded_at) : new Date();
-
-        if (isNaN(recordedAt.getTime())) {
-          recordedAt = new Date();
-        }
-      } catch {
-        recordedAt = new Date();
-      }
+      const recAt = resolveRecordedAt(loc.recorded_at);
 
       await connection.execute(
         `
@@ -47,7 +73,7 @@ export const batchInsertLocations = async (card_no, locations) => {
             :lat,
             :lng,
             :acc,
-            :rec_at,
+            TO_TIMESTAMP(:rec_at, 'YYYY-MM-DD HH24:MI:SS.FF6'),
             SYSTIMESTAMP,
             TRUNC(SYSDATE)
         )
@@ -58,7 +84,7 @@ export const batchInsertLocations = async (card_no, locations) => {
           lat: Number(loc.latitude),
           lng: Number(loc.longitude),
           acc: Number(loc.accuracy ?? 0),
-          rec_at: recordedAt,
+          rec_at: recAt,
         },
         {
           autoCommit: false,
@@ -92,6 +118,71 @@ export const batchInsertLocations = async (card_no, locations) => {
         // Ignore close errors
       }
     }
+  }
+};
+
+/**
+ * Record the location an employee marked attendance from as a LOCATION_TRACKS
+ * point, so it shows up (as the first point of the day) in the web portal's
+ * location tracking view. Mirrors save_attendance_origin_point in the FastAPI
+ * LMS-Backend (repositories/location_repository.py).
+ *
+ * Best-effort and idempotent: skips insertion when an identical point already
+ * exists for this card today. RECORDED_AT is stored in UTC (SYS_EXTRACT_UTC) to
+ * match the convention used by the periodic location batch. Returns true if a
+ * new point was inserted, false otherwise.
+ */
+export const saveAttendanceOriginPoint = async (card_no, latitude, longitude, accuracy = null) => {
+  if (latitude === null || latitude === undefined || longitude === null || longitude === undefined)
+    return false;
+
+  const lat = Number(latitude);
+  const lon = Number(longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+
+  const accNum = Number(accuracy);
+  const acc = Number.isFinite(accNum) ? accNum : 0.0;
+
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const result = await connection.execute(
+      `
+      INSERT INTO LOCATION_TRACKS (
+          ID, CARD_NO, LATITUDE, LONGITUDE, ACCURACY,
+          RECORDED_AT, SYNCED_AT, ATTENDANCE_DATE
+      )
+      SELECT
+          (SELECT NVL(MAX(ID), 0) + 1 FROM LOCATION_TRACKS),
+          :card_no, :lat, :lng, :acc,
+          SYS_EXTRACT_UTC(SYSTIMESTAMP), SYSTIMESTAMP, TRUNC(SYSDATE)
+      FROM DUAL
+      WHERE NOT EXISTS (
+          SELECT 1 FROM LOCATION_TRACKS lt
+          WHERE TO_CHAR(lt.CARD_NO) = :card_no
+            AND lt.ATTENDANCE_DATE = TRUNC(SYSDATE)
+            AND ROUND(lt.LATITUDE, 6)  = ROUND(:lat, 6)
+            AND ROUND(lt.LONGITUDE, 6) = ROUND(:lng, 6)
+      )
+      `,
+      { card_no: String(card_no), lat, lng: lon, acc },
+      { autoCommit: true },
+    );
+    const inserted = result.rowsAffected ?? 0;
+    if (inserted)
+      console.log(`[LOCATION] Attendance-origin point saved for card=${card_no} (${lat},${lon})`);
+    else console.log(`[LOCATION] Attendance-origin point already present for card=${card_no}`);
+    return Boolean(inserted);
+  } catch (e) {
+    try {
+      await connection?.rollback();
+    } catch {
+      /* ignore */
+    }
+    console.log(`[LOCATION] Attendance-origin insert failed (non-fatal): ${e.message ?? e}`);
+    return false;
+  } finally {
+    await connection?.close();
   }
 };
 
