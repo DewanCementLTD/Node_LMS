@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
     // BACKEND_URL is the server-side proxy target — must be a locally
     // reachable address (not a public domain that loops through NAT).
     const backendUrl =
-      process.env.BACKEND_URL || "http://163.61.91.221:8001";
+      process.env.BACKEND_URL || "http://10.0.0.120:8001";
     return [
       {
         source: "/api/:path*",
