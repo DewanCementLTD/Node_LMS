@@ -13,11 +13,10 @@ export function useAttendanceController() {
   const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>(() => {
     const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const toLocal = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    return {
-      from: firstDay.toISOString().split("T")[0],
-      to: now.toISOString().split("T")[0],
-    };
+    return { from: toLocal(firstDay), to: toLocal(now) };
   });
 
   const loadAttendance = useCallback(async () => {

@@ -116,7 +116,7 @@ def _card_is_sec_username(card_no: str, empcode: str = "") -> bool:
             cur.execute("""
                 SELECT h."MOBILE#", h.EMPCODE
                 FROM HR_EMP_MASTER h
-                LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+                LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
                 WHERE TO_CHAR(e.CARD_NO) = :cn1
                    OR TO_CHAR(h."ATDTCARD#") = :cn2
                    OR h.EMPCODE = :cn3

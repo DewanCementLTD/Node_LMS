@@ -144,13 +144,17 @@ def _card_int(card_no: str) -> str:
 def _get_empcode(card_no: str) -> str:
     conn = get_connection()
     cursor = conn.cursor()
+    card_int = _card_int(card_no)
     try:
         cursor.execute("""
-            SELECT EMPCODE FROM EMPLOYEE
-            WHERE TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
-        """, {"card": card_no, "card_int": _card_int(card_no)})
+            SELECT EMPCODE FROM HR_EMP_MASTER
+            WHERE TO_CHAR("ATDTCARD#") = :card OR TO_CHAR("ATDTCARD#") = :card_int
+               OR EMPCODE = :card OR EMPCODE = :card_int
+        """, {"card": card_no, "card_int": card_int})
         row = cursor.fetchone()
-        return row[0] if row else card_no
+        return row[0] if (row and row[0]) else card_no
+    except Exception:
+        return card_no
     finally:
         cursor.close()
         conn.close()
@@ -414,13 +418,15 @@ def get_attendance_report(card_no: str, date_str: str):
 def get_attendance_report_range(card_no: str, from_date: str, to_date: str):
     """Fetch attendance records in a date range. from_date/to_date: 'YYYY-MM-DD'.
 
-    Reads ATTENDANCE_RECORDS only (precise entry/exit times + mobile location).
-    One row per day: IN = earliest mark, OUT = latest mark.
+    Tries ATTENDANCE_RECORDS (mobile check-ins) first; falls back to DUTY_ROSTER
+    (ERP-populated) when ATTENDANCE_RECORDS returns no rows for the range.
     """
     conn = get_connection()
     cursor = conn.cursor()
     try:
         card_int = _card_int(card_no)
+        params = {"card": card_no, "card_int": card_int, "from_d": from_date, "to_d": to_date}
+
         cursor.execute("""
             SELECT
                 TRUNC(ATTENDANCE_DATE)          AS roster_date,
@@ -451,7 +457,7 @@ def get_attendance_report_range(card_no: str, from_date: str, to_date: str):
                   TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
             GROUP BY TRUNC(ATTENDANCE_DATE)
             ORDER BY TRUNC(ATTENDANCE_DATE)
-        """, {"card": card_no, "card_int": card_int, "from_d": from_date, "to_d": to_date})
+        """, params)
 
         rows = cursor.fetchall()
         columns = [col[0].lower() for col in cursor.description]
@@ -459,7 +465,44 @@ def get_attendance_report_range(card_no: str, from_date: str, to_date: str):
         for row in result:
             if row.get("roster_date") and hasattr(row["roster_date"], "strftime"):
                 row["roster_date"] = row["roster_date"].strftime("%Y-%m-%d")
-        return result
+
+        if result:
+            return result
+
+        # Fallback: read from DUTY_ROSTER (ERP-owned, populated automatically)
+        try:
+            cursor.execute("""
+                SELECT
+                    TRUNC(ROSTER_DATE)  AS roster_date,
+                    IN_TIME             AS in_time,
+                    OUT_TIME            AS out_time,
+                    ROSTER_SHIFT        AS roster_shift,
+                    0                   AS absent_days,
+                    CASE WHEN IN_TIME IS NOT NULL THEN 'Present' ELSE 'Absent' END AS status,
+                    0                   AS w_hrs,
+                    0                   AS w_mnt,
+                    0                   AS late_hrs,
+                    0                   AS late_mnt,
+                    0                   AS ot_hrs,
+                    0                   AS ot_mnt,
+                    ROSTER_REMARKS      AS roster_remarks,
+                    DAY_NAME            AS day_name
+                FROM DUTY_ROSTER
+                WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+                  AND TRUNC(ROSTER_DATE) BETWEEN
+                      TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
+                ORDER BY TRUNC(ROSTER_DATE)
+            """, params)
+            rows = cursor.fetchall()
+            columns = [col[0].lower() for col in cursor.description]
+            result = [dict(zip(columns, r)) for r in rows]
+            for row in result:
+                if row.get("roster_date") and hasattr(row["roster_date"], "strftime"):
+                    row["roster_date"] = row["roster_date"].strftime("%Y-%m-%d")
+            return result
+        except Exception as dr_err:
+            print(f"[ATTENDANCE_RANGE] DUTY_ROSTER fallback failed: {dr_err}")
+            return []
 
     except Exception as e:
         err = str(e)
@@ -477,11 +520,13 @@ def get_attendance_report_range(card_no: str, from_date: str, to_date: str):
 # ------------------------------------------------------------------
 
 def get_attendance_summary(card_no: str, from_date: str, to_date: str):
-    """from_date / to_date: 'YYYY-MM-DD'. Reads ATTENDANCE_RECORDS only."""
+    """from_date / to_date: 'YYYY-MM-DD'. Reads ATTENDANCE_RECORDS; falls back to DUTY_ROSTER."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
         card_int = _card_int(card_no)
+        params = {"card": card_no, "card_int": card_int, "from_d": from_date, "to_d": to_date}
+
         cursor.execute("""
             SELECT
                 COUNT(*)                                                     AS total_days,
@@ -498,12 +543,38 @@ def get_attendance_summary(card_no: str, from_date: str, to_date: str):
                    OR TO_CHAR(EMPCODE) = :card OR TO_CHAR(EMPCODE) = :card_int)
               AND TRUNC(ATTENDANCE_DATE) BETWEEN
                   TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
-        """, {"card": card_no, "card_int": card_int, "from_d": from_date, "to_d": to_date})
+        """, params)
         row = cursor.fetchone()
-        if not row:
+        if row and row[0] and row[0] > 0:
+            columns = [col[0].lower() for col in cursor.description]
+            return dict(zip(columns, row))
+
+        # Fallback: DUTY_ROSTER
+        try:
+            cursor.execute("""
+                SELECT
+                    COUNT(*)                                                             AS total_days,
+                    SUM(CASE WHEN IN_TIME IS NOT NULL
+                                  AND OUT_TIME IS NOT NULL THEN 1 ELSE 0 END)           AS present,
+                    SUM(CASE WHEN IN_TIME IS NOT NULL
+                                  AND OUT_TIME IS NULL THEN 1 ELSE 0 END)               AS incomplete,
+                    0                                                                    AS total_minutes,
+                    0                                                                    AS late_minutes,
+                    0                                                                    AS overtime_minutes,
+                    0                                                                    AS absent_days
+                FROM DUTY_ROSTER
+                WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+                  AND TRUNC(ROSTER_DATE) BETWEEN
+                      TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
+            """, params)
+            row = cursor.fetchone()
+            if not row:
+                return {}
+            columns = [col[0].lower() for col in cursor.description]
+            return dict(zip(columns, row))
+        except Exception as dr_err:
+            print(f"[ATTENDANCE_SUMMARY] DUTY_ROSTER fallback failed: {dr_err}")
             return {}
-        columns = [col[0].lower() for col in cursor.description]
-        return dict(zip(columns, row))
 
     except Exception as e:
         err = str(e)
