@@ -823,6 +823,97 @@ def get_leave_balances(card_no: str):
 
 
 # ===============================
+# LEAVE TYPES (full LOV from LEAVE_TYPES + balance)
+# ===============================
+
+def _is_od_type(desc: str) -> bool:
+    d = (desc or "").upper()
+    return "OD" == d.strip() or "OD " in d or " OD" in d or "ON DUTY" in d or "OFFICIAL DUTY" in d
+
+
+def get_leave_types(card_no: str):
+    """Return all leave types from LEAVE_TYPES with balance from ALL_LEAVE_BAL.
+    OD-type leaves are flagged with is_od=True and bypass balance restrictions.
+    Types not present in ALL_LEAVE_BAL_V are still included (balance=None for OD,
+    balance=0 for others).
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        # Step 1: all leave types from master table
+        types = []
+        try:
+            cursor.execute("""
+                SELECT LEAVE_TYPE_PK, LEAVE_DESC
+                FROM LEAVE_TYPES
+                ORDER BY LEAVE_TYPE_PK
+            """)
+            for r in cursor.fetchall():
+                types.append({"leave_type": r[0], "leave_desc": r[1] or ""})
+        except Exception as e:
+            print(f"[LEAVE_TYPES] LEAVE_TYPES query failed: {e}")
+
+        # Step 2: balances from the view
+        balances = {}
+        try:
+            cursor.execute("""
+                SELECT leave_type, balance FROM ALL_LEAVE_BAL_V WHERE card_no = :card
+            """, {"card": card_no})
+            for r in cursor.fetchall():
+                balances[r[0]] = r[1]
+        except Exception as e:
+            print(f"[LEAVE_TYPES] ALL_LEAVE_BAL_V query failed: {e}")
+
+        # Step 3: fallback to raw table if view returned nothing
+        if not balances:
+            for tbl in ("ALL_LEAVE_BAL",):
+                for card_col in ("CARD_NO", "EMP_FK"):
+                    try:
+                        cursor.execute(f"""
+                            SELECT LEAVE_TYPE_FK, BALANCE FROM {tbl}
+                            WHERE TO_CHAR({card_col}) = :card
+                        """, {"card": card_no})
+                        for r in cursor.fetchall():
+                            balances[r[0]] = r[1]
+                        if balances:
+                            break
+                    except Exception:
+                        pass
+                if balances:
+                    break
+
+        # Step 4: merge
+        result = []
+        for t in types:
+            lt = t["leave_type"]
+            desc = t["leave_desc"]
+            is_od = _is_od_type(desc)
+            bal = balances.get(lt)
+            result.append({
+                "leave_type": lt,
+                "leave_desc": desc,
+                "balance": bal,
+                "is_od": is_od,
+            })
+
+        # If LEAVE_TYPES was empty, fall back to balance view entries only
+        if not result:
+            for lt_id, bal in balances.items():
+                result.append({
+                    "leave_type": lt_id,
+                    "leave_desc": None,
+                    "balance": bal,
+                    "is_od": False,
+                })
+
+        return result
+
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ===============================
 # APPLY LEAVE (POST)
 # ===============================
 
@@ -833,37 +924,64 @@ def apply_leave(card_no: str,
                 reason: str,
                 compc: int,
                 brnch: int,
-                emp_name: str):
+                emp_name: str,
+                half_day: bool = False,
+                half_day_session: str = None):
 
     conn = get_connection()
     cursor = conn.cursor()
 
+    # Half day forces single-day application
+    if half_day:
+        to_date = from_date
+
     d1 = datetime.strptime(from_date, "%Y-%m-%d")
     d2 = datetime.strptime(to_date, "%Y-%m-%d")
-    leave_days = (d2 - d1).days + 1
+    leave_days = 0.5 if half_day else (d2 - d1).days + 1
 
-    # Validate leave balance before inserting
+    # Append half-day session info to reason
+    if half_day:
+        if half_day_session == "second":
+            reason = f"{reason} [Second Half: 13:00-18:00]"
+        else:
+            reason = f"{reason} [First Half: 09:30-13:00]"
+
+    # Check if this leave type is OD (On Duty) — OD bypasses balance checks
+    is_od = False
     try:
         cursor.execute("""
-            SELECT balance FROM ALL_LEAVE_BAL_V
-            WHERE card_no = :card AND leave_type = :lt
-        """, {"card": card_no, "lt": leave_type_id})
-        bal_row = cursor.fetchone()
-        current_balance = float(bal_row[0]) if bal_row else 0
-        if current_balance <= 0:
-            cursor.close()
-            conn.close()
-            return {"status": "error", "message": "No remaining balance for this leave type."}
-        if leave_days > current_balance:
-            cursor.close()
-            conn.close()
-            return {
-                "status": "error",
-                "message": f"Insufficient balance. Available: {current_balance}, Requested: {leave_days}",
-            }
-    except Exception as e:
-        print(f"[LEAVE] Balance check warning: {e}")
-        # Continue if view doesn't exist — let insert proceed
+            SELECT LEAVE_DESC FROM LEAVE_TYPES WHERE LEAVE_TYPE_PK = :lt
+        """, {"lt": leave_type_id})
+        row = cursor.fetchone()
+        if row:
+            is_od = _is_od_type(row[0] or "")
+    except Exception:
+        pass
+
+    # Validate leave balance (skipped for OD)
+    if not is_od:
+        try:
+            cursor.execute("""
+                SELECT balance FROM ALL_LEAVE_BAL_V
+                WHERE card_no = :card AND leave_type = :lt
+            """, {"card": card_no, "lt": leave_type_id})
+            bal_row = cursor.fetchone()
+            current_balance = float(bal_row[0]) if bal_row else 0
+            if current_balance <= 0:
+                cursor.close()
+                conn.close()
+                return {"status": "error", "message": "No remaining balance for this leave type."}
+            if leave_days > current_balance:
+                cursor.close()
+                conn.close()
+                return {
+                    "status": "error",
+                    "message": f"Insufficient balance. Available: {current_balance}, Requested: {leave_days}",
+                }
+        except Exception as e:
+            print(f"[LEAVE] Balance check warning: {e}")
+
+    hrs = 4 if half_day else 0
 
     try:
         cursor.execute("""
@@ -886,7 +1004,7 @@ def apply_leave(card_no: str,
                 TO_DATE(:to_date, 'YYYY-MM-DD'),
                 :leave_days,
                 :emp_fk,
-                0,
+                :hrs,
                 :leave_type_id,
                 :reason,
                 'PENDING',
@@ -900,6 +1018,7 @@ def apply_leave(card_no: str,
             "to_date": to_date,
             "leave_days": leave_days,
             "emp_fk": card_no,
+            "hrs": hrs,
             "leave_type_id": leave_type_id,
             "reason": reason,
             "emp_name": emp_name,

@@ -87,12 +87,13 @@ class LeaveBalanceResponse(BaseModel):
 class LeaveApplyRequest(BaseModel):
     # Flutter sends: type (leave code), from_date, to_date, reason, half_day
     # card_no comes from the URL path parameter
-    type: Optional[str] = None          # Flutter field name
+    type: Optional[str] = None           # Flutter field name
     leave_type_id: Optional[int] = None  # numeric FK (if known)
     from_date: str
     to_date: str
     reason: str
     half_day: Optional[bool] = False
+    half_day_session: Optional[str] = None  # "first" | "second"
     compc: int = 0
     brnch: int = 0
     emp_name: str = ''

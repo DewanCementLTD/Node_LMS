@@ -2,15 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { applyLeave, fetchLeaveStatus } from "@/services/leaveService";
+import { applyLeave, fetchLeaveStatus, fetchLeaveTypes } from "@/services/leaveService";
 import { fetchLeaveBalances } from "@/services/authService";
 import { fetchDashboard } from "@/services/authService";
-import { LeaveApplyRequest, LeaveApplication, LeaveBalance } from "@/models/leave";
+import { LeaveApplyRequest, LeaveApplication, LeaveBalance, LeaveType } from "@/models/leave";
 
 export function useLeaveController() {
   const { user } = useAuth();
   const [leaveHistory, setLeaveHistory] = useState<LeaveApplication[]>([]);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
+  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,12 +21,14 @@ export function useLeaveController() {
     if (!user) return;
     setLoading(true);
     try {
-      const [statusRes, balRes] = await Promise.all([
+      const [statusRes, balRes, typesRes] = await Promise.all([
         fetchLeaveStatus(user.card_no),
         fetchLeaveBalances(user.card_no),
+        fetchLeaveTypes(user.card_no),
       ]);
       setLeaveHistory(statusRes.items || []);
       setLeaveBalances(balRes.items || []);
+      setLeaveTypes(typesRes.items || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load leave data");
     } finally {
@@ -37,28 +40,37 @@ export function useLeaveController() {
     loadLeaveData();
   }, [loadLeaveData]);
 
-  async function submitLeave(data: Omit<LeaveApplyRequest, "compc" | "brnch" | "emp_name">) {
+  async function submitLeave(
+    data: Omit<LeaveApplyRequest, "compc" | "brnch" | "emp_name">
+  ) {
     if (!user) return;
 
-    // Check balance before submitting
-    const selectedBalance = leaveBalances.find(
-      (lb) => lb.leave_type === data.leave_type_id
+    const selectedType = leaveTypes.find(
+      (lt) => Number(lt.leave_type) === data.leave_type_id
     );
-    if (selectedBalance && selectedBalance.balance <= 0) {
-      setError("You have no remaining balance for this leave type.");
-      return;
-    }
+    const isOD = selectedType?.is_od ?? false;
 
-    // Check requested days vs available balance
-    if (selectedBalance && data.from_date && data.to_date) {
-      const d1 = new Date(data.from_date);
-      const d2 = new Date(data.to_date);
-      const requestedDays = Math.floor((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      if (requestedDays > selectedBalance.balance) {
-        setError(
-          `Insufficient balance. You have ${selectedBalance.balance} day(s) but requested ${requestedDays} day(s).`
-        );
+    // Balance check — skipped for OD
+    if (!isOD) {
+      const selectedBalance = leaveBalances.find(
+        (lb) => lb.leave_type === data.leave_type_id
+      );
+      if (selectedBalance && selectedBalance.balance <= 0) {
+        setError("You have no remaining balance for this leave type.");
         return;
+      }
+      if (selectedBalance && data.from_date && data.to_date) {
+        const d1 = new Date(data.from_date);
+        const d2 = new Date(data.to_date);
+        const requestedDays = data.half_day
+          ? 0.5
+          : Math.floor((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        if (requestedDays > selectedBalance.balance) {
+          setError(
+            `Insufficient balance. You have ${selectedBalance.balance} day(s) but requested ${requestedDays} day(s).`
+          );
+          return;
+        }
       }
     }
 
@@ -69,8 +81,8 @@ export function useLeaveController() {
       const dashData = await fetchDashboard(user.card_no);
       const request: LeaveApplyRequest = {
         ...data,
-        compc: dashData.compc ?? 1,
-        brnch: dashData.branch ?? 1,
+        compc: Number(dashData.compc ?? 1),
+        brnch: Number(dashData.branch ?? 1),
         emp_name: user.emp_name,
       };
       const res = await applyLeave(user.card_no, request);
@@ -86,6 +98,7 @@ export function useLeaveController() {
   return {
     leaveHistory,
     leaveBalances,
+    leaveTypes,
     loading,
     submitting,
     error,

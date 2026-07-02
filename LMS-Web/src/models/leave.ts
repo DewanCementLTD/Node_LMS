@@ -8,11 +8,24 @@ export interface LeaveBalanceResponse {
   items: LeaveBalance[];
 }
 
+export interface LeaveType {
+  leave_type: number | string;
+  leave_desc?: string;
+  balance?: number | null;
+  is_od: boolean;
+}
+
+export interface LeaveTypesResponse {
+  items: LeaveType[];
+}
+
 export interface LeaveApplyRequest {
   from_date: string;
   to_date: string;
   reason: string;
   leave_type_id: number;
+  half_day?: boolean;
+  half_day_session?: "first" | "second";
   compc: number;
   brnch: number;
   emp_name: string;

@@ -18,6 +18,7 @@ from services.auth_service import (
     login_user,
     fetch_dashboard,
     fetch_leave_balances,
+    fetch_leave_types,
     fetch_profile,
     apply_leave_service,
     fetch_leave_status,
@@ -101,6 +102,19 @@ def leave_balances(card_no: str):
 
 
 # ===================================
+# LEAVE TYPES (full LOV with balance)
+# ===================================
+
+@router.get("/leave-types/{card_no}")
+def leave_types(card_no: str):
+    try:
+        items = fetch_leave_types(card_no)
+        return {"items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===================================
 # APPLY LEAVE
 # ===================================
 
@@ -117,6 +131,8 @@ def apply_leave(card_no: str, request: LeaveApplyRequest):
         request.compc,
         request.brnch,
         request.emp_name,
+        half_day=request.half_day or False,
+        half_day_session=request.half_day_session,
     )
 
     if result["status"] == "error":

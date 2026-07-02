@@ -3,6 +3,7 @@ from repositories.user_repository import (
     get_user_by_login,
     get_dashboard,
     get_leave_balances,
+    get_leave_types,
     get_user_profile,
     apply_leave,
     get_leave_status,
@@ -56,6 +57,14 @@ def fetch_leave_balances(card_no: str):
 
 
 # =====================================
+# LEAVE TYPES (full LOV)
+# =====================================
+
+def fetch_leave_types(card_no: str):
+    return get_leave_types(card_no)
+
+
+# =====================================
 # PROFILE
 # =====================================
 
@@ -74,7 +83,9 @@ def apply_leave_service(card_no: str,
                         reason: str,
                         compc: int,
                         brnch: int,
-                        emp_name: str):
+                        emp_name: str,
+                        half_day: bool = False,
+                        half_day_session: str = None):
 
     return apply_leave(
         card_no,
@@ -84,7 +95,9 @@ def apply_leave_service(card_no: str,
         reason,
         compc,
         brnch,
-        emp_name
+        emp_name,
+        half_day=half_day,
+        half_day_session=half_day_session,
     )
 
 
