@@ -154,7 +154,7 @@ def authenticate_user(username: str, password: str) -> dict | None:
             sec_row = cur.fetchone()
             if not sec_row:
                 cur.execute("""
-                    SELECT USRID, DESCR, PASWD, MOBILE, ECODE
+                    SELECT USRID, DESCR, PASWD, MOBILE, ECODE, ULEVL
                     FROM SEC_USERNAME WHERE ECODE = :ec AND STATS = 'E'
                 """, {"ec": m})
                 sec_row = cur.fetchone()

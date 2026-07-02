@@ -8,10 +8,10 @@ export interface DashboardData {
   designation?: string;
   department?: string;
   compcnm?: string;
-  compc?: number;
-  branch?: number;
+  compc?: string;
+  branch?: string;
   brnchnm?: string;
-  hod?: number;
+  hod?: string;
   hod_nm?: string;
   balance?: number;
 }
@@ -33,8 +33,8 @@ export interface EmployeeProfile {
   emp_status?: string;
   salary?: number;
   type?: string;
-  compc?: number;
-  brnch?: number;
+  compc?: string;
+  brnch?: string;
 }
 
 export interface EmployeeSearchResult {

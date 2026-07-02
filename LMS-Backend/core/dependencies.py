@@ -25,14 +25,14 @@ def get_employee_flags(card_no: str) -> dict:
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        # ---- Attempt 1: EMPLOYEE + HR_EMP_MASTER (no FACE_REGISTERED) ----
+        # ---- Attempt 1: EMPLOYEE + HR_EMP_MASTER via EMP_NO join ----
         try:
             cursor.execute("""
                 SELECT e.EMP_NAME,
                        NVL(h.HR_ADMIN, 'N') AS hr_admin,
-                       e.EMPCODE
+                       h.EMPCODE
                 FROM EMPLOYEE e
-                LEFT JOIN HR_EMP_MASTER h ON e.EMPCODE = h.EMPCODE
+                LEFT JOIN HR_EMP_MASTER h ON h.EMPCODE = e.EMP_NO
                 WHERE TO_CHAR(e.CARD_NO) = :card
             """, {"card": card_no})
             row = cursor.fetchone()
@@ -54,9 +54,7 @@ def get_employee_flags(card_no: str) -> dict:
         cursor3 = conn.cursor()
         try:
             cursor3.execute("""
-                SELECT NAME,
-                       NVL(HR_ADMIN, 'N') AS hr_admin,
-                       EMPCODE
+                SELECT NAME, EMPCODE
                 FROM HR_EMP_MASTER
                 WHERE "ATDTCARD#" = :card
                    OR EMPCODE = :card
@@ -66,19 +64,19 @@ def get_employee_flags(card_no: str) -> dict:
                 return {
                     "emp_name": row[0] or "",
                     "face_registered": "N",
-                    "hr_admin": row[1] or "N",
-                    "empcode": row[2] or "",
+                    "hr_admin": "N",
+                    "empcode": row[1] or "",
                 }
         except Exception as e3:
             print(f"[get_employee_flags] Attempt 3 (HR_EMP_MASTER direct) failed: {e3}")
         finally:
             cursor3.close()
 
-        # ---- Attempt 4: EMPLOYEE only ----
+        # ---- Attempt 4: EMPLOYEE only (EMP_NAME; skip EMPCODE — column may not exist) ----
         cursor4 = conn.cursor()
         try:
             cursor4.execute("""
-                SELECT EMP_NAME, EMPCODE
+                SELECT EMP_NAME
                 FROM EMPLOYEE
                 WHERE TO_CHAR(CARD_NO) = :card
             """, {"card": card_no})
@@ -89,8 +87,11 @@ def get_employee_flags(card_no: str) -> dict:
                 "emp_name": row[0] or "",
                 "face_registered": "N",
                 "hr_admin": "N",
-                "empcode": row[1] or "",
+                "empcode": "",
             }
+        except Exception as e4:
+            print(f"[get_employee_flags] Attempt 4 (EMPLOYEE only) failed: {e4}")
+            return dict(_DEFAULT)
         finally:
             cursor4.close()
 
