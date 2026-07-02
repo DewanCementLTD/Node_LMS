@@ -445,7 +445,8 @@ def get_attendance_report_range(card_no: str, from_date: str, to_date: str):
                 MAX(ADDRESS)                    AS roster_remarks,
                 CAST(NULL AS VARCHAR2(20))      AS day_name
             FROM ATTENDANCE_RECORDS
-            WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+            WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
+                   OR TO_CHAR(EMPCODE) = :card OR TO_CHAR(EMPCODE) = :card_int)
               AND TRUNC(ATTENDANCE_DATE) BETWEEN
                   TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
             GROUP BY TRUNC(ATTENDANCE_DATE)
@@ -493,7 +494,8 @@ def get_attendance_summary(card_no: str, from_date: str, to_date: str):
                 0                                                            AS overtime_minutes,
                 0                                                            AS absent_days
             FROM ATTENDANCE_RECORDS
-            WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+            WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
+                   OR TO_CHAR(EMPCODE) = :card OR TO_CHAR(EMPCODE) = :card_int)
               AND TRUNC(ATTENDANCE_DATE) BETWEEN
                   TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
         """, {"card": card_no, "card_int": card_int, "from_d": from_date, "to_d": to_date})

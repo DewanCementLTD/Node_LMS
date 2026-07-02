@@ -576,12 +576,13 @@ def get_dashboard(card_no: str):
         ) or dept_code
 
         desg_code = result.get('designation')
+        emp_pk_val = result.get('emp_pk')
         result['designation'] = _safe_lookup_max(
-            cursor, "SELECT MAX(DESIG_DESC) FROM HR_DESIGNATION WHERE DESG_CD = :v",
-            desg_code, tag="dashboard.designation"
+            cursor, "SELECT MAX(DESIGNATION) FROM EMPLOYEE WHERE EMP_NO = :v",
+            emp_pk_val, tag="dashboard.designation"
         ) or _safe_lookup_max(
-            cursor, "SELECT MAX(DESCR) FROM HR_DESIGNATION WHERE DESG_CD = :v",
-            desg_code, tag="dashboard.designation2"
+            cursor, "SELECT MAX(DESIG_NAME) FROM EMPLOYEE WHERE EMP_NO = :v",
+            emp_pk_val, tag="dashboard.designation2"
         ) or desg_code
 
         result['compcnm'] = _safe_lookup_max(
@@ -761,11 +762,11 @@ def get_user_profile(card_no: str):
             dept_no, tag="profile.department"
         ) or str(dept_no or '')
         result['designation'] = _safe_lookup_max(
-            cursor, "SELECT MAX(DESIG_DESC) FROM HR_DESIGNATION WHERE DESG_CD = :v",
-            desg_cd, tag="profile.designation"
+            cursor, "SELECT MAX(DESIGNATION) FROM EMPLOYEE WHERE EMP_NO = :v",
+            empcode, tag="profile.designation"
         ) or _safe_lookup_max(
-            cursor, "SELECT MAX(DESCR) FROM HR_DESIGNATION WHERE DESG_CD = :v",
-            desg_cd, tag="profile.designation2"
+            cursor, "SELECT MAX(DESIG_NAME) FROM EMPLOYEE WHERE EMP_NO = :v",
+            empcode, tag="profile.designation2"
         ) or str(desg_cd or '')
         result['compcnm'] = _safe_lookup_max(
             cursor, "SELECT MAX(DESCR) FROM COMPANY_INFO WHERE COMPC = :v",
