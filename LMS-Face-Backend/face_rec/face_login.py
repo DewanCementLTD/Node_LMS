@@ -5,7 +5,7 @@ import base64
 import numpy as np
 from insightface.app import FaceAnalysis
 from threading import Lock
-import oracledb
+import cx_Oracle as oracledb
 
 # ******** ENV
 os.environ['INSIGHTFACE_HOME'] = r'C:/Users/Administrator/.insightface/models'
@@ -17,9 +17,9 @@ face_app.prepare(ctx_id=0, det_size=(640, 640))
 # ******** ORACLE
 def get_db_connection():
     return oracledb.connect(
-        user="hrms",
-        password="oracle123",
-        dsn="localhost:1521/orcl"
+        user="erp_dcl",
+        password="erp",
+        dsn="10.0.0.170:1521/locals.yousufdewan.com"
     )
 
 # ******** FAISS GLOBAL

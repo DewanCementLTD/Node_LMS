@@ -25,7 +25,7 @@ export function AttendanceChart({ summary }: AttendanceChartProps) {
 
   return (
     <div className="h-48">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height={192}>
         <BarChart data={data} barSize={40}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
           <XAxis dataKey="name" tick={{ fontSize: 12 }} />

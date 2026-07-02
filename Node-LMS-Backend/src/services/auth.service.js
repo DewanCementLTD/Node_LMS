@@ -1,3 +1,4 @@
+import { ca } from 'zod/v4/locales';
 import { getDirectConnection } from '../config/database.js';
 
 export const authenticateUser = async (username, password) => {
@@ -8,11 +9,11 @@ export const authenticateUser = async (username, password) => {
     // Match on mobile, attendance-card, or empcode
     const userSql = `
       SELECT
-        h.EMPCODE            AS empcode,
-        TO_CHAR(e.CARD_NO)   AS card_no,
-        h.NAME               AS emp_name,
-        h.HR_ADMIN           AS hr_admin,
-        h.UNIT_ID            AS unit_id
+        h.EMPCODE            AS "empcode",
+        TO_CHAR(e.CARD_NO)   AS "card_no",
+        h.NAME               AS "emp_name",
+        h.HR_ADMIN           AS "hr_admin",
+        h.UNIT_ID            AS "unit_id"
       FROM HR_EMP_MASTER h
       LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
       WHERE (h."MOBILE#" = :username OR h."ATDTCARD#" = :username OR h.EMPCODE = :username)
@@ -99,15 +100,16 @@ export const getProfile = async (card_no) => {
     connection = await getDirectConnection();
     const sql = `
       SELECT
-        h.NAME                                     AS emp_name,
-        d.DEPT_NAME                                AS department,
-        dg.DESG_DESC                               AS designation,
-        h.EMAIL                                    AS email_address,
-        h."MOBILE#"                                AS mobile_no,
-        TO_CHAR(h.DTOFBRTH, 'YYYY-MM-DD')          AS date_of_birth,
-        TO_CHAR(h.DTOFAPPT, 'YYYY-MM-DD')          AS date_of_join,
-        h.FHNAME                                   AS father_name,
-        h.NICNO                                    AS nic_no
+        h.NAME                                     AS "emp_name",
+        -- h.USER_PASWD                               AS "password",
+        d.DEPT_NAME                                AS "department",
+        dg.DESG_DESC                               AS "designation",
+        h.EMAIL                                    AS "email_address",
+        h."MOBILE#"                                AS "mobile_no",
+        TO_CHAR(h.DTOFBRTH, 'YYYY-MM-DD')          AS "date_of_birth",
+        TO_CHAR(h.DTOFAPPT, 'YYYY-MM-DD')          AS "date_of_join",
+        h.FHNAME                                   AS "father_name",
+        h.NICNO                                    AS "nic_no"
       FROM HR_EMP_MASTER h
       LEFT JOIN EMPLOYEE    e  ON e.EMPCODE   = h.EMPCODE
       LEFT JOIN HR_DEPT     d  ON d.DEPT_NO   = h.DEPT_NO  AND TO_CHAR(d.COMPC) = TO_CHAR(h.UNIT_ID)
@@ -130,10 +132,10 @@ export const lookupByPhone = async (phone) => {
     connection = await getDirectConnection();
     const sql = `
       SELECT
-        h.EMPCODE           AS empcode,
-        TO_CHAR(e.CARD_NO)  AS card_no,
-        h.NAME              AS emp_name,
-        h."MOBILE#"         AS mobile_no
+        h.EMPCODE           AS "empcode",
+        TO_CHAR(e.CARD_NO)  AS "card_no",
+        h.NAME              AS "emp_name",
+        h."MOBILE#"         AS "mobile_no"
       FROM HR_EMP_MASTER h
       LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
       WHERE h."MOBILE#" = :phone
@@ -153,25 +155,29 @@ export const changePassword = async (card_no, old_password, new_password) => {
 
     // Verify old password against the matched employee
     const checkSql = `
-      SELECT h.EMPCODE FROM HR_EMP_MASTER h
-      LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
-      WHERE (TO_CHAR(e.CARD_NO) = :card_no OR h."ATDTCARD#" = :card_no OR h.EMPCODE = :card_no)
-        AND h.USER_PASWD = :old_password
+    SELECT h.EMPCODE FROM HR_EMP_MASTER h
+    LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+    WHERE (TO_CHAR(e.CARD_NO) = :card_no OR h."ATDTCARD#" = :card_no OR h.EMPCODE = :card_no)
+      AND (h.USER_PASWD = :old_password OR h.USER_PASWD Is NUll)
       FETCH FIRST 1 ROWS ONLY
     `;
-    const checkRow = (
-      await connection.execute(checkSql, { card_no, old_password }, { outFormat: 4002 })
-    ).rows?.[0];
-
-    if (!checkRow) return { success: false };
-
+      const checkRow = (
+        await connection.execute(checkSql, { card_no, old_password }, { outFormat: 4002 })
+      ).rows?.[0];
+      
+      if (!checkRow) return { success: false };
+        
     await connection.execute(
       `UPDATE HR_EMP_MASTER SET USER_PASWD = :new_password WHERE EMPCODE = :empcode`,
-      { new_password, empcode: checkRow.empcode },
+      { new_password, empcode: checkRow.EMPCODE },
       { autoCommit: true }
     );
     return { success: true };
-  } finally {
+  } catch (err) {
+    console.error('Error in changePassword:', err);
+    throw err;
+  }
+   finally {
     await connection?.close();
   }
 };

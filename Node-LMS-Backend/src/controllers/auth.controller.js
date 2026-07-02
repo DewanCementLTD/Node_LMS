@@ -41,6 +41,7 @@ export const updatePassword = async (req, res, next) => {
   try {
     const { card_no } = res.locals.validated.params;
     const { old_password, new_password } = res.locals.validated.body;
+    console.log(`Attempting to change password for card_no: ${card_no}, old_password: ${old_password}, new_password: ${new_password}`); // Debugging line
     const result = await changePassword(card_no, old_password, new_password);
     if (!result.success)
       return res.status(400).json({ status: 'ERROR', message: 'Current password is incorrect.' });

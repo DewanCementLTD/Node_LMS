@@ -4,6 +4,32 @@ from core.database import get_connection
 from datetime import datetime
 
 
+def _decode_sec_paswd(raw_paswd: str) -> str | None:
+    """Decode SEC_USERNAME.PASWD without calling datacrypt.decryptdata.
+
+    Passwords are stored as RAWTOHEX(plaintext) + RAWTOHEX(chr(0)) + binary_suffix.
+    We hex-decode the leading valid-hex chars up to the first null byte.
+    Example: '4F5241434C4531323300O624A355' -> 'ORACLE123'
+    """
+    if not raw_paswd:
+        return None
+    hex_part = ""
+    for c in raw_paswd:
+        if c.upper() in "0123456789ABCDEF":
+            hex_part += c
+        else:
+            break
+    if not hex_part or len(hex_part) % 2 != 0:
+        return None
+    try:
+        decoded = bytes.fromhex(hex_part)
+        if b"\x00" in decoded:
+            decoded = decoded[: decoded.index(b"\x00")]
+        return decoded.decode("latin-1")
+    except Exception:
+        return None
+
+
 # ===============================
 # USER SECURITY RIGHTS
 # ===============================
@@ -24,7 +50,7 @@ def admin_can_edit_salary(card_no: str) -> bool:
                 TO_CHAR(MOBILE) IN (:c, :c0, :cn)
                 OR ECODE = :c
                 OR ECODE IN (SELECT h.EMPCODE FROM HR_EMP_MASTER h
-                             LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+                             LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
                              WHERE h.EMPCODE = :c OR TO_CHAR(e.CARD_NO) = :c)
             )
         """, {"c": c, "c0": c0, "cn": cn})
@@ -139,7 +165,6 @@ def authenticate_user(username: str, password: str) -> dict | None:
         ulevl = None
         if sec_row:
             usrid, descr, raw_paswd, sec_mobile, ecode, ulevl = sec_row
-            # Try to decrypt; fall back to raw comparison if decryption fails
             stored_paswd = None
             try:
                 cur.execute("SELECT datacrypt.decryptdata(:p) FROM DUAL", {"p": raw_paswd})
@@ -147,7 +172,8 @@ def authenticate_user(username: str, password: str) -> dict | None:
                 stored_paswd = str(dec_row[0]).strip() if dec_row and dec_row[0] else None
             except Exception as e:
                 print(f"[AUTH] datacrypt.decryptdata failed for USRID={usrid}: {e}")
-                stored_paswd = str(raw_paswd or "").strip()
+                # PASWD is stored as RAWTOHEX(plaintext)+RAWTOHEX(chr(0))+binary_suffix
+                stored_paswd = _decode_sec_paswd(str(raw_paswd or ""))
 
             if (stored_paswd or "").strip() == (password or "").strip():
                 sec_authenticated = True
@@ -168,7 +194,7 @@ def authenticate_user(username: str, password: str) -> dict | None:
                 cur.execute("""
                     SELECT TO_CHAR(e.CARD_NO), h.NAME, h.EMPCODE
                     FROM HR_EMP_MASTER h
-                    LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+                    LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
                     WHERE h.EMPCODE = :ec
                 """, {"ec": empcode})
                 row = cur.fetchone()
@@ -185,7 +211,7 @@ def authenticate_user(username: str, password: str) -> dict | None:
                 cur.execute("""
                     SELECT TO_CHAR(e.CARD_NO), h.NAME, h.EMPCODE
                     FROM HR_EMP_MASTER h
-                    LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+                    LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
                     WHERE h."MOBILE#" IN (:mv1, :mv2, :mv3)
                 """, {"mv1": mv, "mv2": mv_w, "mv3": mv_no0})
                 row = cur.fetchone()
@@ -267,10 +293,10 @@ def authenticate_user(username: str, password: str) -> dict | None:
         l_no0 = l[1:]     if l.startswith('0')     else l
         try:
             cur.execute("""
-                SELECT TO_CHAR(e.CARD_NO), h.USER_PASWD, h.NAME,
+                SELECT TO_CHAR(e.CARD_NO), e.USER_PASWD, h.NAME,
                        h.EMPCODE, h."ATDTCARD#"
                 FROM HR_EMP_MASTER h
-                LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+                LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
                 WHERE h."MOBILE#" IN (:l1, :l2, :l3)
                    OR h."ATDTCARD#" = :l4 OR h.EMPCODE = :l5
             """, {"l1": l, "l2": l_w0, "l3": l_no0, "l4": l, "l5": l})
@@ -303,8 +329,10 @@ def authenticate_user(username: str, password: str) -> dict | None:
         try:
             cur.execute("""
                 SELECT TO_CHAR(CARD_NO), USER_PASWD FROM EMPLOYEE
-                WHERE TO_CHAR(CARD_NO) = :e1 OR EMPCODE = :e2
-            """, {"e1": l, "e2": l})
+                WHERE TO_CHAR(CARD_NO) = :e1
+                   OR TO_CHAR(MOBILE_NO) = :e1
+                   OR EMP_NO = :e1
+            """, {"e1": l})
             row = cur.fetchone()
             if row:
                 stored_paswd = (row[1] or "").strip()
@@ -350,11 +378,11 @@ def get_user_by_login(login: str):
         # ---- Try HR_EMP_MASTER + EMPLOYEE join to get real CARD_NO ----
         try:
             cursor.execute("""
-                SELECT TO_CHAR(e.CARD_NO), h.USER_PASWD, h.NAME,
+                SELECT TO_CHAR(e.CARD_NO), e.USER_PASWD, h.NAME,
                        NVL(h.HR_ADMIN, 'N') AS hr_admin, h.EMPCODE,
                        h."ATDTCARD#"
                 FROM HR_EMP_MASTER h
-                LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+                LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
                 WHERE h."MOBILE#" = :login
                    OR h."MOBILE#" = '0' || :login
                    OR h."ATDTCARD#" = :login
@@ -383,11 +411,10 @@ def get_user_by_login(login: str):
             cursor2.execute("""
                 SELECT card_no, USER_PASWD
                 FROM EMPLOYEE
-                WHERE MOBILE_NO = :login
-                   OR MOBILE_NO = '0' || :login
+                WHERE TO_CHAR(MOBILE_NO) = :login
+                   OR TO_CHAR(MOBILE_NO) = '0' || :login
                    OR TO_CHAR(CARD_NO) = :login
                    OR EMP_NO = :login
-                   OR EMPCODE = :login
             """, {"login": login})
             row = cursor2.fetchone()
             if row:
@@ -422,7 +449,7 @@ def lookup_by_phone(phone: str):
             cursor.execute("""
                 SELECT TO_CHAR(e.CARD_NO), h.NAME, h.EMPCODE, h."ATDTCARD#"
                 FROM HR_EMP_MASTER h
-                LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+                LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
                 WHERE h."MOBILE#" = :login
                    OR h."MOBILE#" = '0' || :login
                    OR h."ATDTCARD#" = :login
@@ -440,12 +467,12 @@ def lookup_by_phone(phone: str):
         cursor2 = conn.cursor()
         try:
             cursor2.execute("""
-                SELECT TO_CHAR(CARD_NO), EMP_NAME, EMPCODE
+                SELECT TO_CHAR(CARD_NO), EMP_NAME, EMP_NO
                 FROM EMPLOYEE
-                WHERE MOBILE_NO = :login
-                   OR MOBILE_NO = '0' || :login
+                WHERE TO_CHAR(MOBILE_NO) = :login
+                   OR TO_CHAR(MOBILE_NO) = '0' || :login
                    OR TO_CHAR(CARD_NO) = :login
-                   OR EMPCODE = :login
+                   OR EMP_NO = :login
             """, {"login": phone})
             row = cursor2.fetchone()
             if row:
@@ -491,9 +518,9 @@ def get_dashboard(card_no: str):
                     TO_CHAR(h.DEPT_NO)           AS department,
                     h.UNIT_ID                    AS compc,
                     h.LOCATION                   AS branch,
-                    h.HOD1                       AS hod
+                    h.RPT_OFFICER                AS hod
                 FROM HR_EMP_MASTER h
-                LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+                LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
                 WHERE TO_CHAR(e.CARD_NO) = :card1
                    OR h."ATDTCARD#"      = :card2
                    OR h.EMPCODE          = :card3
@@ -516,7 +543,7 @@ def get_dashboard(card_no: str):
                         TO_CHAR(h.DEPT_NO)           AS department,
                         h.UNIT_ID                    AS compc,
                         h.LOCATION                   AS branch,
-                        h.HOD1                       AS hod
+                        h.RPT_OFFICER                AS hod
                     FROM HR_EMP_MASTER h
                     WHERE h."ATDTCARD#" = :card1 OR h.EMPCODE = :card2
                 """, {"card1": card_no, "card2": card_no})
@@ -537,8 +564,26 @@ def get_dashboard(card_no: str):
                 result['emp_pk'] = float(result['emp_pk'])
             except (ValueError, TypeError):
                 result['emp_pk'] = None
+        for field in ('compc', 'branch', 'hod'):
+            if result.get(field) is not None:
+                result[field] = str(result[field])
 
         # Isolated name lookups — any failure leaves the field as None
+        dept_code = result.get('department')
+        result['department'] = _safe_lookup_max(
+            cursor, "SELECT MAX(DEPT_NAME) FROM HR_DEPT WHERE DEPT_NO = :v",
+            dept_code, tag="dashboard.department"
+        ) or dept_code
+
+        desg_code = result.get('designation')
+        result['designation'] = _safe_lookup_max(
+            cursor, "SELECT MAX(DESIG_DESC) FROM HR_DESIGNATION WHERE DESG_CD = :v",
+            desg_code, tag="dashboard.designation"
+        ) or _safe_lookup_max(
+            cursor, "SELECT MAX(DESCR) FROM HR_DESIGNATION WHERE DESG_CD = :v",
+            desg_code, tag="dashboard.designation2"
+        ) or desg_code
+
         result['compcnm'] = _safe_lookup_max(
             cursor, "SELECT MAX(DESCR) FROM COMPANY_INFO WHERE COMPC = :v",
             result.get('compc'), tag="compcnm"
@@ -621,15 +666,15 @@ def get_user_profile(card_no: str):
                     h.ADDRESS,
                     h.UNIT_ID,
                     h.LOCATION,
-                    h.HOD1,
-                    h.HOD2,
+                    h.RPT_OFFICER AS HOD1,
+                    NULL          AS HOD2,
                     h.STATUS,
                     h.NICNO,
                     h.BASIC,
                     h.GRADE_CD,
                     h.MARSTAT
                 FROM HR_EMP_MASTER h
-                LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+                LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
                 WHERE TO_CHAR(e.CARD_NO) = :c1
                    OR h."ATDTCARD#"      = :c2
                    OR h.EMPCODE          = :c3
@@ -659,8 +704,8 @@ def get_user_profile(card_no: str):
                         h.ADDRESS,
                         h.UNIT_ID,
                         h.LOCATION,
-                        h.HOD1,
-                        h.HOD2,
+                        h.RPT_OFFICER AS HOD1,
+                        NULL          AS HOD2,
                         h.STATUS,
                         h.NICNO,
                         h.BASIC,
@@ -715,7 +760,13 @@ def get_user_profile(card_no: str):
             cursor, "SELECT MAX(DEPT_NAME) FROM HR_DEPT WHERE DEPT_NO = :v",
             dept_no, tag="profile.department"
         ) or str(dept_no or '')
-        result['designation'] = str(desg_cd or '')
+        result['designation'] = _safe_lookup_max(
+            cursor, "SELECT MAX(DESIG_DESC) FROM HR_DESIGNATION WHERE DESG_CD = :v",
+            desg_cd, tag="profile.designation"
+        ) or _safe_lookup_max(
+            cursor, "SELECT MAX(DESCR) FROM HR_DESIGNATION WHERE DESG_CD = :v",
+            desg_cd, tag="profile.designation2"
+        ) or str(desg_cd or '')
         result['compcnm'] = _safe_lookup_max(
             cursor, "SELECT MAX(DESCR) FROM COMPANY_INFO WHERE COMPC = :v",
             result.get('compc'), tag="profile.compcnm"

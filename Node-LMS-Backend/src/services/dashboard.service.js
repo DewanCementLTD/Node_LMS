@@ -7,20 +7,20 @@ export const getDashboardData = async (card_no) => {
 
     const empSql = `
       SELECT
-        h.EMPCODE                              AS emp_pk,
-        TO_CHAR(e.CARD_NO)                     AS card_no,
-        h."ATDTCARD#"                          AS emp_no,
-        h.NAME                                 AS emp_name,
-        TO_CHAR(h.DTOFAPPT, 'YYYY-MM-DD')      AS date_of_join,
-        h.NICNO                                AS nic_no,
-        dg.DESG_DESC                           AS designation,
-        d.DEPT_NAME                            AS department,
-        ci.DESCR                               AS compcnm,
-        h.UNIT_ID                              AS compc,
-        h.LOCATION                             AS branch,
-        cl.DESCR                               AS brnchnm,
-        h.HOD1                                 AS hod,
-        (SELECT NAME FROM HR_EMP_MASTER hod WHERE hod.EMPCODE = TO_CHAR(h.HOD1))  AS hod_nm
+        h.EMPCODE                              AS "emp_pk",
+        TO_CHAR(e.CARD_NO)                     AS "card_no",
+        h."ATDTCARD#"                          AS "emp_no",
+        h.NAME                                 AS "emp_name",
+        TO_CHAR(h.DTOFAPPT, 'YYYY-MM-DD')      AS "date_of_join",
+        h.NICNO                                AS "nic_no",
+        dg.DESG_DESC                           AS "designation",
+        d.DEPT_NAME                            AS "department",
+        ci.DESCR                               AS "compcnm",
+        h.UNIT_ID                              AS "compc",
+        h.LOCATION                             AS "branch",
+        cl.DESCR                               AS "brnchnm",
+        h.HOD1                                 AS "hod",
+        (SELECT NAME FROM HR_EMP_MASTER hod WHERE hod.EMPCODE = TO_CHAR(h.HOD1))  AS "hod_nm"
       FROM HR_EMP_MASTER h
       LEFT JOIN EMPLOYEE      e  ON e.EMPCODE   = h.EMPCODE
       LEFT JOIN HR_DEPT       d  ON d.DEPT_NO   = h.DEPT_NO   AND TO_CHAR(d.COMPC) = TO_CHAR(h.UNIT_ID)
@@ -38,7 +38,7 @@ export const getDashboardData = async (card_no) => {
     // Aggregate leave balance for current year from ALL_LEAVE_BAL_V
     const balRow = (
       await connection.execute(
-        `SELECT SUM(BALANCE) AS balance FROM ALL_LEAVE_BAL_V
+        `SELECT SUM(BALANCE) AS "balance" FROM ALL_LEAVE_BAL_V
          WHERE CARD_NO = :card_no AND YEAR = EXTRACT(YEAR FROM SYSDATE)`,
         { card_no: row.card_no },
         { outFormat: 4002 }

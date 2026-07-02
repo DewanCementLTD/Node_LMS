@@ -1,5 +1,6 @@
 import { fr } from "zod/v4/locales";
 import { getDirectConnection } from "../config/database.js";
+import { cardInt } from "../utils/conversionHelpers.js";
 
 export const recordFaceAttendance = async (body) => {
   const {
@@ -105,24 +106,38 @@ export const getAttendanceRange = async (card_no, from_date, to_date) => {
   try {
     connection = await getDirectConnection();
     const sql = `
-      SELECT
-        ID                                         AS id,
-        CARD_NO                                    AS card_no,
-        TO_CHAR(ATTENDANCE_DATE, 'YYYY-MM-DD')     AS attendance_date,
-        IN_DT                                      AS in_dt,
-        OUT_DT                                     AS out_dt,
-        TOTAL_HOURS                                AS total_hours,
-        ATTENDANCE_TYPE                            AS attendance_type,
-        ADDRESS                                    AS address
-      FROM ATTENDANCE_RECORDS
-      WHERE CARD_NO = :card_no
-        AND ATTENDANCE_DATE >= TO_DATE(:from_date,'YYYY-MM-DD')
-        AND ATTENDANCE_DATE <= TO_DATE(:to_date,  'YYYY-MM-DD')
-      ORDER BY ATTENDANCE_DATE DESC
+            SELECT
+                TRUNC(ATTENDANCE_DATE)          AS "roster_date",
+                MIN(ENTRY_TIME)                 AS "in_time",
+                MAX(EXIT_TIME)                  AS "out_time",
+                'G'                             AS "roster_shift",
+                0                               AS "absent_days",
+                CASE
+                    WHEN MIN(ENTRY_TIME) IS NOT NULL THEN 'Present'
+                    ELSE 'Absent'
+                END                             AS "status",
+                CASE WHEN MAX(TIME_SPENT) IS NOT NULL
+                     THEN FLOOR(MAX(TIME_SPENT) / 60) ELSE 0
+                END                             AS "w_hrs",
+                CASE WHEN MAX(TIME_SPENT) IS NOT NULL
+                     THEN MOD(MAX(TIME_SPENT), 60) ELSE 0
+                END                             AS "w_mnt",
+                0                               AS "late_hrs",
+                0                               AS "late_mnt",
+                0                               AS "ot_hrs",
+                0                               AS "ot_mnt",
+                MAX(ADDRESS)                    AS "roster_remarks",
+                CAST(NULL AS VARCHAR2(20))      AS "day_name"
+            FROM ATTENDANCE_RECORDS
+            WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+              AND TRUNC(ATTENDANCE_DATE) BETWEEN
+                  TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
+            GROUP BY TRUNC(ATTENDANCE_DATE)
+            ORDER BY TRUNC(ATTENDANCE_DATE)
     `;
     const result = await connection.execute(
       sql,
-      { card_no, from_date, to_date },
+      {"card": card_no, "card_int": cardInt(card_no), "from_d": from_date, "to_d": to_date},
       { outFormat: 4002 },
     );
     return result.rows ?? [];
@@ -137,15 +152,15 @@ export const getAttendanceByDate = async (card_no, date_str) => {
     connection = await getDirectConnection();
     const sql = `
       SELECT
-        ID                                         AS id,
-        CARD_NO                                    AS card_no,
-        TO_CHAR(ATTENDANCE_DATE, 'YYYY-MM-DD')     AS attendance_date,
-        IN_DT                                      AS in_dt,
-        OUT_DT                                     AS out_dt,
-        TOTAL_HOURS                                AS total_hours,
-        ATTENDANCE_TYPE                            AS attendance_type,
-        ADDRESS                                    AS address,
-        FORMATTED_ADDRESS                          AS formatted_address
+        ID                                         AS "id",
+        CARD_NO                                    AS "card_no",
+        TO_CHAR(ATTENDANCE_DATE, 'YYYY-MM-DD')     AS "attendance_date",
+        IN_DT                                      AS "in_dt",
+        OUT_DT                                     AS "out_dt",
+        TOTAL_HOURS                                AS "total_hours",
+        ATTENDANCE_TYPE                            AS "attendance_type",
+        ADDRESS                                    AS "address",
+        FORMATTED_ADDRESS                          AS "formatted_address"
       FROM ATTENDANCE_RECORDS
       WHERE CARD_NO = :card_no
         AND ATTENDANCE_DATE = TO_DATE(:date_str,'YYYY-MM-DD')
@@ -172,13 +187,13 @@ export const getAttendanceSummary = async (emp_pk, from_date, to_date) => {
     const to_d = to_date;
     const sql = `
         SELECT
-          COUNT(*) AS total_days,
-          SUM(CASE WHEN ENTRY_TIME IS NOT NULL AND EXIT_TIME IS NOT NULL THEN 1 ELSE 0 END)  AS present,
-          SUM(CASE WHEN ENTRY_TIME IS NOT NULL AND EXIT_TIME IS NULL THEN 1 ELSE 0 END)      AS incomplete,
-          NVL(SUM(NVL(TIME_SPENT, 0)), 0) AS total_minutes,
-          0 AS late_minutes,
-          0 AS overtime_minutes,
-          0 AS absent_days
+          COUNT(*) AS "total_days",
+          SUM(CASE WHEN ENTRY_TIME IS NOT NULL AND EXIT_TIME IS NOT NULL THEN 1 ELSE 0 END)  AS "present",
+          SUM(CASE WHEN ENTRY_TIME IS NOT NULL AND EXIT_TIME IS NULL THEN 1 ELSE 0 END)      AS "incomplete",
+          NVL(SUM(NVL(TIME_SPENT, 0)), 0) AS "total_minutes",
+          0 AS "late_minutes",
+          0 AS "overtime_minutes",
+          0 AS "absent_days"
       FROM ATTENDANCE_RECORDS
       WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
         AND TRUNC(ATTENDANCE_DATE) BETWEEN TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')

@@ -66,10 +66,10 @@ class DashboardResponse(BaseModel):
     designation: Optional[str] = None
     department: Optional[str] = None
     compcnm: Optional[str] = None
-    compc: Optional[float] = None
-    branch: Optional[float] = None
+    compc: Optional[str] = None
+    branch: Optional[str] = None
     brnchnm: Optional[str] = None
-    hod: Optional[float] = None
+    hod: Optional[str] = None
     hod_nm: Optional[str] = None
     balance: Optional[float] = None
 

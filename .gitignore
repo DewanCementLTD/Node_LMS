@@ -6,6 +6,12 @@ node_modules/
 logs/
 *.log
 
+# ── Build / Output ───────────────────────────
+dist/
+
+# .env files
+.env
+
 # ── Next.js / web build ──────────────────────
 .next/
 **/.next/

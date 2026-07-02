@@ -4,7 +4,9 @@ import {
   getLocationSummary,
   getLocationReportSummary,
   getLocationTrail,
-} from '../services/location.service.js';
+} from "../services/location.service.js";
+import { resolveFilterLists } from "../services/adminRights.service.js";
+import { toList } from "../utils/conversionHelpers.js";
 
 export const locationBatch = async (req, res, next) => {
   try {
@@ -29,9 +31,13 @@ export const locationHistory = async (req, res, next) => {
 
 export const locationSummary = async (req, res, next) => {
   try {
-    const { date, compc, brnch } = res.locals.validated.query;
-    const items = await getLocationSummary(date, compc, brnch);
-    res.json({ items });
+    const { date, admin_card_no, compc, brnch } = res.locals.validated.query;
+
+    // Company/branch are always intersected with the admin's rights server-side.
+    const { finalCompanies, finalBranches } = await resolveFilterLists(admin_card_no, compc, brnch);
+
+    const employees = await getLocationSummary(date, finalCompanies, finalBranches);
+    res.json({ body: { date, employees } });
   } catch (err) {
     next(err);
   }
@@ -40,7 +46,11 @@ export const locationSummary = async (req, res, next) => {
 export const locationReportSummary = async (req, res, next) => {
   try {
     const items = await getLocationReportSummary(res.locals.validated.query);
-    res.json({ items });
+
+    res.json({
+      status: "SUCCESS",
+      items,
+    });
   } catch (err) {
     next(err);
   }
@@ -48,8 +58,35 @@ export const locationReportSummary = async (req, res, next) => {
 
 export const locationTrail = async (req, res, next) => {
   try {
-    const items = await getLocationTrail(res.locals.validated.query);
-    res.json({ items });
+    const {
+      from_date,
+      to_date,
+      admin_card_no,
+      compc,
+      brnch,
+      dept_no,
+      desg_cd,
+      empcodes,
+      region,
+      category,
+    } = res.locals.validated.query;
+
+    // Company/branch are always intersected with the admin's rights server-side.
+    const { finalCompanies, finalBranches } = await resolveFilterLists(admin_card_no, compc, brnch);
+
+    const items = await getLocationTrail({
+      fromDate: from_date,
+      toDate: to_date,
+      allowedCompanies: finalCompanies,
+      allowedBranches: finalBranches,
+      deptNo: toList(dept_no),
+      desgCd: toList(desg_cd),
+      empcodes: toList(empcodes),
+      region: toList(region),
+      category: toList(category),
+    });
+
+    res.json({ items, from_date, to_date });
   } catch (err) {
     next(err);
   }

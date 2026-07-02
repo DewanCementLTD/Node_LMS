@@ -110,7 +110,7 @@ def _empcode_for_card(card_no: str) -> str | None:
     try:
         cur.execute("""
             SELECT h.EMPCODE FROM HR_EMP_MASTER h
-            LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+            LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
             WHERE h.EMPCODE = :c OR TO_CHAR(e.CARD_NO) = :c
         """, {"c": str(card_no)})
         r = cur.fetchone()
