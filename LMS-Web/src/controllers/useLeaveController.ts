@@ -46,14 +46,14 @@ export function useLeaveController() {
     if (!user) return;
 
     const selectedType = leaveTypes.find(
-      (lt) => Number(lt.leave_type) === data.leave_type_id
+      (lt) => String(lt.leave_type) === data.type
     );
     const isOD = selectedType?.is_od ?? false;
 
     // Balance check — skipped for OD
     if (!isOD) {
       const selectedBalance = leaveBalances.find(
-        (lb) => lb.leave_type === data.leave_type_id
+        (lb) => String(lb.leave_type) === data.type
       );
       if (selectedBalance && selectedBalance.balance <= 0) {
         setError("You have no remaining balance for this leave type.");

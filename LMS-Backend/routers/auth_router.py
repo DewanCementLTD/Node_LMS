@@ -122,9 +122,18 @@ def leave_types(card_no: str):
              response_model=MessageResponse)
 def apply_leave(card_no: str, request: LeaveApplyRequest):
 
+    # Flutter sends `type` (code like 'ML'); web sends `type` too, with
+    # leave_type_id kept for backward compatibility. Never coerce to int —
+    # leave type codes are strings.
+    leave_type = (request.type or "").strip() or (
+        str(request.leave_type_id) if request.leave_type_id is not None else ""
+    )
+    if not leave_type:
+        raise HTTPException(status_code=400, detail="Leave type is required")
+
     result = apply_leave_service(
         card_no,
-        request.leave_type_id or 0,
+        leave_type,
         request.from_date,
         request.to_date,
         request.reason,

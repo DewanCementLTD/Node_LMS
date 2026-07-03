@@ -36,11 +36,10 @@ export default function ApplyLeavePage() {
     if (!fromDate || !leaveType || !reason.trim()) return;
     if (!halfDay && !toDate) return;
 
-    const numericType = parseInt(leaveType);
     submitLeave({
       from_date: fromDate,
       to_date: halfDay ? fromDate : toDate,
-      leave_type_id: isNaN(numericType) ? 0 : numericType,
+      type: leaveType,
       reason: reason.trim(),
       half_day: halfDay,
       half_day_session: halfDay ? halfDaySession : undefined,

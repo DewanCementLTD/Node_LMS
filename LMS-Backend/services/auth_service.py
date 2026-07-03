@@ -77,7 +77,7 @@ def fetch_profile(card_no: str):
 # =====================================
 
 def apply_leave_service(card_no: str,
-                        leave_type_id: int,
+                        leave_type,
                         from_date: str,
                         to_date: str,
                         reason: str,
@@ -89,7 +89,7 @@ def apply_leave_service(card_no: str,
 
     return apply_leave(
         card_no,
-        leave_type_id,
+        leave_type,
         from_date,
         to_date,
         reason,

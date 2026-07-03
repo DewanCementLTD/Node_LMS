@@ -23,7 +23,9 @@ export interface LeaveApplyRequest {
   from_date: string;
   to_date: string;
   reason: string;
-  leave_type_id: number;
+  // Leave type code (e.g. "ML") — codes are strings, never parseInt them
+  type: string;
+  leave_type_id?: number;
   half_day?: boolean;
   half_day_session?: "first" | "second";
   compc: number;
