@@ -123,6 +123,46 @@ export const getAdminRights = async (adminCardNo) => {
 };
 
 /**
+ * True if the admin (matched in SEC_USERNAME by mobile / empcode / card) has
+ * ULEVL = 'M'. Fails OPEN when the admin can't be resolved, so M-level managers
+ * are never wrongly blocked (the UI is the primary gate).
+ *
+ * Mirrors `admin_can_edit_salary` in the FastAPI LMS-Backend
+ * (repositories/user_repository.py).
+ */
+export const adminCanEditSalary = async (cardNo) => {
+  if (!cardNo) return true;
+  const c = String(cardNo).trim();
+  const c0 = c.startsWith("0") ? c : `0${c}`;
+  const cn = c.startsWith("0") ? c.substring(1) : c;
+
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const result = await connection.execute(
+      `
+      SELECT ULEVL FROM SEC_USERNAME WHERE STATS = 'E' AND (
+          TO_CHAR(MOBILE) IN (:c, :c0, :cn)
+          OR ECODE = :c
+          OR ECODE IN (SELECT h.EMPCODE FROM HR_EMP_MASTER h
+                       LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+                       WHERE h.EMPCODE = :c OR TO_CHAR(e.CARD_NO) = :c)
+      )`,
+      { c, c0, cn },
+      { outFormat: OUT_FORMAT_OBJECT }
+    );
+    const rows = result.rows ?? [];
+    if (!rows.length) return true;
+    return rows.some((r) => String(r.ULEVL ?? "").trim().toUpperCase() === "M");
+  } catch (err) {
+    console.error("[RIGHTS] adminCanEditSalary check failed (allowing):", err.message);
+    return true;
+  } finally {
+    await connection?.close();
+  }
+};
+
+/**
  * Resolves the final company/branch filter lists for an HR report query.
  * - If the admin selected a specific compc/brnch, use just that one (but only
  *   if it's within their allowed list — otherwise fall back to the allowed list).

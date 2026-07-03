@@ -24,9 +24,9 @@ export const applyLeave = async (req, res, next) => {
   try {
     const { card_no } = res.locals.validated.params;
     const result = await applyLeaveData(card_no, res.locals.validated.body);
-    if (!result.success)
-      return res.status(404).json({ status: 'ERROR', message: 'Employee not found.' });
-    res.json({ status: 'SUCCESS', message: 'Leave application submitted.' });
+    if (result.status === 'error')
+      return res.status(400).json({ status: 'ERROR', message: result.message || 'Leave application failed.' });
+    res.json({ status: 'SUCCESS', message: result.message || 'Leave applied successfully' });
   } catch (err) {
     next(err);
   }
