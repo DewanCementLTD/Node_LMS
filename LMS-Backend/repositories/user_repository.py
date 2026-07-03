@@ -884,6 +884,7 @@ def get_leave_balances(card_no: str):
                     "leave_type": r[0],
                     "leave_desc": r[1],
                     "balance": r[2],
+                    "is_od": _is_od_type(str(r[1] or "")) or _is_od_type(str(r[0] or "")),
                 })
         except Exception as e:
             print(f"[LEAVE_BAL] ALL_LEAVE_BAL_V query failed: {e}")
@@ -900,14 +901,17 @@ def get_leave_balances(card_no: str):
                     break
             if matched:
                 # OD is applicable irrespective of its balance number
-                if t["is_od"] and (matched.get("balance") or 0) <= 0:
-                    matched["balance"] = 999
+                if t["is_od"]:
+                    matched["is_od"] = True
+                    if (matched.get("balance") or 0) <= 0:
+                        matched["balance"] = 999
                 continue
             bal = 999 if t["is_od"] else (t["entitlement"] if t["entitlement"] is not None else 0)
             items.append({
                 "leave_type": t["code"] or t["pk"],
                 "leave_desc": t["desc"],
                 "balance": bal,
+                "is_od": t["is_od"],
             })
 
         return items
@@ -938,18 +942,19 @@ def get_leave_types(card_no: str):
         except Exception as e:
             print(f"[LEAVE_TYPES] ALL_LEAVE_BAL_V query failed: {e}")
 
+        # Only the LEAVE_TYPES LOV is offered for applying — extra rows in
+        # ALL_LEAVE_BAL_V (ABSENT, SPECIAL LEAVE, contract-staff buckets, ...)
+        # are informational and must NOT appear in the apply dropdown.
         types = _leave_types_meta(cursor)
         result = []
-        used_bal_idx = set()
 
         for t in types:
             bal = None
-            for i, b in enumerate(balances):
+            for b in balances:
                 if _type_matches(t, b[0]) or (
                     t["desc"] and str(b[1] or "").strip().upper() == t["desc"].upper()
                 ):
                     bal = b[2]
-                    used_bal_idx.add(i)
                     break
             if bal is None and t["entitlement"] is not None:
                 bal = t["entitlement"]
@@ -960,9 +965,9 @@ def get_leave_types(card_no: str):
                 "is_od": t["is_od"],
             })
 
-        # View rows that didn't match any LEAVE_TYPES entry
-        for i, b in enumerate(balances):
-            if i not in used_bal_idx:
+        # Fallback: if LEAVE_TYPES couldn't be read at all, use the view rows
+        if not result:
+            for b in balances:
                 result.append({
                     "leave_type": b[0],
                     "leave_desc": b[1],
@@ -1021,28 +1026,33 @@ def apply_leave(card_no: str,
     is_od = sel["is_od"] if sel else False
     fk_val = sel["pk"] if (sel and sel["pk"] is not None) else raw
 
-    # Validate leave balance (skipped for OD). Compare as strings — the view's
-    # leave_type column holds codes like 'ML'.
+    # Validate leave balance (skipped for OD). Match in Python against BOTH the
+    # view's leave_type code AND its description — the identifier the client
+    # sends comes from LEAVE_TYPES and may only line up with the view via desc.
     if not is_od:
         candidates = {raw.upper()}
         if sel:
             if sel.get("code"):
                 candidates.add(sel["code"].upper())
+            if sel.get("desc"):
+                candidates.add(sel["desc"].upper())
             if sel.get("pk") is not None:
                 candidates.add(str(sel["pk"]).strip().upper())
         try:
-            binds = {"card": card_no}
-            ph = []
-            for i, c in enumerate(candidates):
-                binds[f"lt{i}"] = c
-                ph.append(f":lt{i}")
-            cursor.execute(f"""
-                SELECT balance FROM ALL_LEAVE_BAL_V
+            cursor.execute("""
+                SELECT leave_type, leave_desc, balance
+                FROM ALL_LEAVE_BAL_V
                 WHERE card_no = :card
-                  AND UPPER(TRIM(TO_CHAR(leave_type))) IN ({", ".join(ph)})
-            """, binds)
-            bal_row = cursor.fetchone()
-            current_balance = float(bal_row[0]) if bal_row and bal_row[0] is not None else 0
+            """, {"card": card_no})
+            current_balance = None
+            for r in cursor.fetchall():
+                vals = {str(r[0] or "").strip().upper(), str(r[1] or "").strip().upper()}
+                if vals & candidates:
+                    current_balance = float(r[2] or 0)
+                    break
+            if current_balance is None:
+                print(f"[LEAVE] No balance row matched type={raw!r} (candidates={candidates}) for card={card_no}")
+                current_balance = 0
             if current_balance <= 0:
                 cursor.close()
                 conn.close()
@@ -1142,6 +1152,21 @@ def get_leave_status(card_no: str):
         except Exception as e:
             print(f"[LEAVE_STATUS] empcode lookup failed: {e}")
 
+        # ERP-entered applications store EMP_FK as EMPLOYEE.EMP_PK
+        emp_pk = ""
+        try:
+            cursor.execute("""
+                SELECT EMP_PK FROM EMPLOYEE
+                WHERE TO_CHAR(CARD_NO) = :c1 OR TO_CHAR(CARD_NO) = :c2
+            """, {"c1": card_no, "c2": card_int})
+            r = cursor.fetchone()
+            if r and r[0] is not None:
+                emp_pk = str(r[0]).strip()
+                if emp_pk.endswith(".0"):
+                    emp_pk = emp_pk[:-2]
+        except Exception as e:
+            print(f"[LEAVE_STATUS] emp_pk lookup failed: {e}")
+
         cursor.execute("""
             SELECT
                 ENTRY_DATE      AS entry_date,
@@ -1152,9 +1177,14 @@ def get_leave_status(card_no: str):
                 REASON          AS reason,
                 APPROVAL_STATUS AS status
             FROM LEAVE_APPLICATION
-            WHERE TO_CHAR(EMP_FK) IN (:c1, :c2, :c3)
+            WHERE TO_CHAR(EMP_FK) IN (:c1, :c2, :c3, :c4)
             ORDER BY ENTRY_DATE DESC
-        """, {"c1": card_no, "c2": card_int, "c3": empcode or card_no})
+        """, {
+            "c1": card_no,
+            "c2": card_int,
+            "c3": empcode or card_no,
+            "c4": emp_pk or card_no,
+        })
 
         rows = cursor.fetchall()
         columns = [col[0].lower() for col in cursor.description]

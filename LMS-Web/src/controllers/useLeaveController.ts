@@ -45,15 +45,19 @@ export function useLeaveController() {
   ) {
     if (!user) return;
 
+    const norm = (v: unknown) => String(v ?? "").trim().toUpperCase();
     const selectedType = leaveTypes.find(
-      (lt) => String(lt.leave_type) === data.type
+      (lt) => norm(lt.leave_type) === norm(data.type)
     );
     const isOD = selectedType?.is_od ?? false;
 
-    // Balance check — skipped for OD
+    // Balance check — skipped for OD. Match the balance row by code OR by
+    // description: the balance view and LEAVE_TYPES may use different keys.
     if (!isOD) {
       const selectedBalance = leaveBalances.find(
-        (lb) => String(lb.leave_type) === data.type
+        (lb) =>
+          norm(lb.leave_type) === norm(data.type) ||
+          (!!selectedType?.leave_desc && norm(lb.leave_desc) === norm(selectedType.leave_desc))
       );
       if (selectedBalance && selectedBalance.balance <= 0) {
         setError("You have no remaining balance for this leave type.");

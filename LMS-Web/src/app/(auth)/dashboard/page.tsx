@@ -151,7 +151,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Leave Balances */}
+      {/* Leave Balances — only real, positive balances (no OD / zero rows) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div className="lg:col-span-2">
           <Card>
@@ -162,24 +162,26 @@ export default function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {leaveBalances.length === 0 ? (
-                <p className="text-gray-400 text-sm py-4">No leave balance data available</p>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {leaveBalances.map((lb, i) => {
-                    const displayBalance = Math.max(0, lb.balance);
-                    return (
+              {(() => {
+                const visibleBalances = leaveBalances.filter(
+                  (lb) => !lb.is_od && lb.balance > 0
+                );
+                return visibleBalances.length === 0 ? (
+                  <p className="text-gray-400 text-sm py-4">No leave balance data available</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {visibleBalances.map((lb, i) => (
                       <div
                         key={i}
                         className="bg-gray-50 rounded-xl p-4 text-center hover:bg-gray-100 transition-colors"
                       >
-                        <p className={`text-2xl font-bold ${displayBalance > 0 ? "text-indigo-600" : "text-gray-400"}`}>{displayBalance}</p>
+                        <p className="text-2xl font-bold text-indigo-600">{lb.balance}</p>
                         <p className="text-xs text-gray-500 mt-1">{lb.leave_desc || `Type ${lb.leave_type}`}</p>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    ))}
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         </div>
@@ -192,7 +194,7 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <LeaveBalanceChart balances={leaveBalances} />
+            <LeaveBalanceChart balances={leaveBalances.filter((lb) => !lb.is_od && lb.balance > 0)} />
           </CardContent>
         </Card>
       </div>

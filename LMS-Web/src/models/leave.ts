@@ -2,6 +2,7 @@ export interface LeaveBalance {
   leave_type: number | string;
   leave_desc?: string;
   balance: number;
+  is_od?: boolean;
 }
 
 export interface LeaveBalanceResponse {

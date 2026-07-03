@@ -64,17 +64,19 @@ export default function ApplyLeavePage() {
 
   if (loading) return <Spinner />;
 
-  // Build options: show all types; OD shows "No limit", others show balance
+  // Build options from the LEAVE_TYPES LOV; OD shows "No limit", others show balance
   const leaveOptions = leaveTypes.map((lt) => {
+    const code = String(lt.leave_type);
     const desc = lt.leave_desc || `Type ${lt.leave_type}`;
+    const name = desc.toUpperCase().startsWith(code.toUpperCase()) ? desc : `${code} - ${desc}`;
     const balLabel = lt.is_od
       ? "No limit"
       : lt.balance != null
         ? `Balance: ${Math.max(0, lt.balance)}`
         : "Balance: 0";
     return {
-      value: String(lt.leave_type),
-      label: `${desc} (${balLabel})`,
+      value: code,
+      label: `${name} (${balLabel})`,
     };
   });
 
