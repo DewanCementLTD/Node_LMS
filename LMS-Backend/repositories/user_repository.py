@@ -1069,60 +1069,77 @@ def apply_leave(card_no: str,
 
     hrs = 4 if half_day else 0
 
-    try:
-        cursor.execute("""
-            INSERT INTO LEAVE_APPLICATION (
-                LEAVE_DATE_FROM,
-                LEAVE_DATE_TO,
-                LEAVE_DAYS,
-                EMP_FK,
-                HRS,
-                LEAVE_TYPE_FK,
-                REASON,
-                APPROVAL_STATUS,
-                ENTRY_DATE,
-                ENTRY_BY,
-                COMPC,
-                BRNCH
-            )
-            VALUES (
-                TO_DATE(:from_date, 'YYYY-MM-DD'),
-                TO_DATE(:to_date, 'YYYY-MM-DD'),
-                :leave_days,
-                :emp_fk,
-                :hrs,
-                :leave_type_fk,
-                :reason,
-                'PENDING',
-                SYSDATE,
-                :emp_name,
-                :compc,
-                :brnch
-            )
-        """, {
-            "from_date": from_date,
-            "to_date": to_date,
-            "leave_days": leave_days,
-            "emp_fk": card_no,
-            "hrs": hrs,
-            "leave_type_fk": fk_val,
-            "reason": reason,
-            "emp_name": emp_name,
-            "compc": compc,
-            "brnch": brnch
-        })
+    insert_params = {
+        "from_date": from_date,
+        "to_date": to_date,
+        "leave_days": leave_days,
+        "emp_fk": card_no,
+        "hrs": hrs,
+        "leave_type_fk": fk_val,
+        "reason": reason,
+        "emp_name": emp_name,
+        "compc": compc,
+        "brnch": brnch,
+    }
 
-        conn.commit()
-        return {"status": "success"}
+    # LEAVE_APPLICATION_PK has no identity/default — generate it with
+    # NVL(MAX(pk),0)+1, the pattern used for every other ERP-table insert in
+    # this codebase. Retry on a PK collision from concurrent applications.
+    import time as _time
 
-    except Exception as e:
-        conn.rollback()
-        print(f"[LEAVE] Insert failed for card={card_no}, type={raw} (fk={fk_val}): {e}")
-        return {"status": "error", "message": str(e)}
+    def _next_pk():
+        cursor.execute("SELECT NVL(MAX(LEAVE_APPLICATION_PK), 0) + 1 FROM LEAVE_APPLICATION")
+        return int((cursor.fetchone() or [1])[0])
 
-    finally:
-        cursor.close()
-        conn.close()
+    last_err = None
+    for attempt in range(3):
+        try:
+            insert_params["pk"] = _next_pk()
+            cursor.execute("""
+                INSERT INTO LEAVE_APPLICATION (
+                    LEAVE_APPLICATION_PK,
+                    LEAVE_DATE_FROM,
+                    LEAVE_DATE_TO,
+                    LEAVE_DAYS,
+                    EMP_FK,
+                    HRS,
+                    LEAVE_TYPE_FK,
+                    REASON,
+                    APPROVAL_STATUS,
+                    ENTRY_DATE,
+                    ENTRY_BY,
+                    COMPC,
+                    BRNCH
+                )
+                VALUES (
+                    :pk,
+                    TO_DATE(:from_date, 'YYYY-MM-DD'),
+                    TO_DATE(:to_date, 'YYYY-MM-DD'),
+                    :leave_days,
+                    :emp_fk,
+                    :hrs,
+                    :leave_type_fk,
+                    :reason,
+                    'PENDING',
+                    SYSDATE,
+                    :emp_name,
+                    :compc,
+                    :brnch
+                )
+            """, insert_params)
+            conn.commit()
+            return {"status": "success"}
+        except Exception as e:
+            conn.rollback()
+            last_err = e
+            # ORA-00001 = unique constraint (PK race) → recompute and retry
+            if "ORA-00001" in str(e) and attempt < 2:
+                _time.sleep(0.05 * (attempt + 1))
+                continue
+            print(f"[LEAVE] Insert failed for card={card_no}, type={raw} (fk={fk_val}): {e}")
+            return {"status": "error", "message": str(e)}
+
+    return {"status": "error", "message": str(last_err) if last_err else "Insert failed"}
 
 
 # Attendance functions moved to repositories/attendance_repository.py
