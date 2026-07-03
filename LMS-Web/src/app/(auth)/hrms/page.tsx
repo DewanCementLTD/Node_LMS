@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
-  ,
+  useHRMSController,
   AttendanceDateRange,
-} from "@/controllers/";
+} from "@/controllers/useHRMSController";
 import { HRMSEmployeeCreate, HRMSSearchResult } from "@/models/hrms";
 import { AttendanceRecord } from "@/models/attendance";
 import { printTimesheetWindow } from "@/lib/printTimesheet";
@@ -351,7 +351,7 @@ function StatusBadge({ status }: { status?: string }) {
 
 export default function HRMSPage() {
   const { user, activeCompany, activeBranch } = useAuth();
-  const ctrl = ();
+  const ctrl = useHRMSController();
 
   const [section, setSection] = useState<"employees" | "locations" | "setup" | "attendance">("employees");
   const [locationFocusCard, setLocationFocusCard] = useState<string | undefined>();
