@@ -1,0 +1,73 @@
+/**
+ * Face service — registration status + enrollment.
+ *
+ * Faithful port of the FastAPI LMS-Backend services/face_service.py +
+ * repositories/face_repository.py. EMP_FACE_EMBEDDINGS (IS_ACTIVE = 'Y') is the
+ * source of truth for whether an employee has a registered face.
+ *
+ * Embedding extraction is a stub on the FastAPI side too — the real embedding
+ * insertion is handled by the separate face microservice (InsightFace + FAISS,
+ * port 8002). register_face here only flips/reports the registration state, so
+ * this port keeps the same behaviour and the same SQL.
+ */
+
+import { getDirectConnection } from "../config/database.js";
+
+const OUT_ARRAY = 4001; // oracledb.OUT_FORMAT_ARRAY
+
+// --- repository: EMP_FACE_EMBEDDINGS -------------------------------------
+
+// Mirrors face_repository.is_face_registered.
+export const isFaceRegistered = async (cardNo) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const result = await connection.execute(
+      `SELECT EMBEDDING_ID, CREATED_AT
+       FROM EMP_FACE_EMBEDDINGS
+       WHERE EMPCODE = :card AND IS_ACTIVE = 'Y'
+       ORDER BY CREATED_AT DESC`,
+      { card: cardNo },
+      { outFormat: OUT_ARRAY }
+    );
+    const row = result.rows?.[0];
+    if (!row) return { is_registered: false, registered_at: null };
+    return { is_registered: true, registered_at: row[1] ? String(row[1]) : null };
+  } catch (err) {
+    console.log("FACE REG CHECK ERROR:", err.message);
+    return { is_registered: false, registered_at: null };
+  } finally {
+    await connection?.close();
+  }
+};
+
+// Mirrors face_repository.store_face_embeddings — the real insertion is done by
+// the face microservice; this is the fallback no-op used by the stub path.
+export const storeFaceEmbeddings = async (/* cardNo, embeddings, createdAt */) => {
+  return { status: "success" };
+};
+
+// --- service: register_face ----------------------------------------------
+
+// Mirrors face_service.register_face.
+export const registerFace = async (cardNo, frames, createdAt = null) => {
+  const status = await isFaceRegistered(cardNo);
+  if (status.is_registered) {
+    return {
+      status: "SUCCESS",
+      card_no: cardNo,
+      already_registered: true,
+      msg: "Face already registered",
+    };
+  }
+
+  // TODO: extract embeddings from frames and store them (face microservice).
+  await storeFaceEmbeddings(cardNo, [], createdAt);
+
+  return {
+    status: "SUCCESS",
+    card_no: cardNo,
+    already_registered: false,
+    msg: `Face registered successfully (${frames.length} frames processed)`,
+  };
+};
