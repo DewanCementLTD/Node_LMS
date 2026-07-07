@@ -36,20 +36,18 @@ export default function LeaveStatusPage() {
         }
       />
 
-      {/* Leave Balance Summary — only real, positive balances (no OD / zero rows) */}
+      {/* Leave Balance Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        {leaveBalances
-          .filter((lb) => !lb.is_od && lb.balance > 0)
-          .map((lb, i) => (
-            <Card key={i}>
-              <CardContent className="py-4 text-center">
-                <p className="text-2xl font-bold text-indigo-600">{lb.balance}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {lb.leave_desc || `Type ${lb.leave_type}`}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
+        {leaveBalances.map((lb, i) => (
+          <Card key={i}>
+            <CardContent className="py-4 text-center">
+              <p className="text-2xl font-bold text-indigo-600">{lb.balance}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {lb.leave_desc || `Type ${lb.leave_type}`}
+              </p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Filter & Table */}

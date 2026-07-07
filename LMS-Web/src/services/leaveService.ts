@@ -1,9 +1,5 @@
 import { apiRequest } from "./api";
-import { LeaveApplyRequest, LeaveStatusResponse, LeaveTypesResponse } from "@/models/leave";
-
-export async function fetchLeaveTypes(cardNo: string): Promise<LeaveTypesResponse> {
-  return apiRequest<LeaveTypesResponse>(`/auth/leave-types/${cardNo}`);
-}
+import { LeaveApplyRequest, LeaveStatusResponse } from "@/models/leave";
 
 export async function applyLeave(
   cardNo: string,

@@ -34,28 +34,28 @@ const router = Router();
 // ---------------------------------------------------------------------------
 // Dashboard  (static routes)
 // ---------------------------------------------------------------------------
-router.get('/dashboard/analytics', validate(dashboardQuerySchema), requireHrAdmin, analytics); // [x] http://localhost:8000/hrms/dashboard/analytics?admin_card_no=100017.3&date=2026-07-01
-router.get('/dashboard',           validate(dashboardQuerySchema), requireHrAdmin, dashboard); // [X] http://localhost:8000/hrms/dashboard?admin_card_no=100017.3&date=2026-07-01
+router.get('/dashboard/analytics', validate(dashboardQuerySchema), requireHrAdmin, analytics); // [x] http://localhost:8000/hrms/dashboard/analytics?admin_card_no=100001.1&date=2026-07-01
+router.get('/dashboard',           validate(dashboardQuerySchema), requireHrAdmin, dashboard); // [X] http://localhost:8000/hrms/dashboard?admin_card_no=100001.1&date=2026-07-01
 
 // ---------------------------------------------------------------------------
 // Attendance reports  (static routes)
 // ---------------------------------------------------------------------------
-router.get('/attendance/bulk',    validate(attendanceReportSchema), requireHrAdmin, bulkAttendance); // [X] http://localhost:8000/hrms/attendance/bulk?admin_card_no=100017.3&from_date=2026-06-01&to_date=2026-06-30
-router.get('/attendance/details', validate(attendanceReportSchema), requireHrAdmin, attendanceDetails);  // [X] http://localhost:8000/hrms/attendance/details?admin_card_no=100017.3&from_date=2026-06-01&to_date=2026-06-30
+router.get('/attendance/bulk',    validate(attendanceReportSchema), requireHrAdmin, bulkAttendance); // [X] http://localhost:8000/hrms/attendance/bulk?admin_card_no=100001.1&from_date=2026-06-01&to_date=2026-06-30
+router.get('/attendance/details', validate(attendanceReportSchema), requireHrAdmin, attendanceDetails);  // [x] http://localhost:8000/hrms/attendance/details?admin_card_no=100001.1&from_date=2026-06-01&to_date=2026-06-30
 
 // ---------------------------------------------------------------------------
 // Employees  (specific routes BEFORE the /:empcode wildcard)
 // ---------------------------------------------------------------------------
-router.get( '/employees/search',        validate(searchEmployeesSchema), requireHrAdmin, searchEmployees);   // [x] http://localhost:8000/hrms/employees/search?q=ali&admin_card_no=100017.3
-router.get( '/employees/:empcode/card', validate(employeeDetailSchema),  requireHrAdmin, getEmployeeIdCard); // [x] http://localhost:8000/hrms/employees/100017.3/card?admin_card_no=100017.3
-router.get( '/employees/:empcode',      validate(employeeDetailSchema),  requireHrAdmin, getEmployee);       // [x] http://localhost:8000/hrms/employees/100660.1?admin_card_no=100017.3
-router.put( '/employees/:empcode',      validate(updateEmployeeSchema),  requireHrAdmin, editEmployee);      // [x] http://localhost:8000/hrms/employees/100011?admin_card_no=100394.1  Body: {"mobile":"03001234567","email":"a@b.com"}
-router.get( '/employees',               validate(listEmployeesSchema),   requireHrAdmin, listEmployees);     // [x] http://localhost:8000/hrms/employees?admin_card_no=100017.3&status=A
+router.get( '/employees/search',        validate(searchEmployeesSchema), requireHrAdmin, searchEmployees);   // [x] http://localhost:8000/hrms/employees/search?q=ali&admin_card_no=100001.1
+router.get( '/employees/:empcode/card', validate(employeeDetailSchema),  requireHrAdmin, getEmployeeIdCard); // [x] http://localhost:8000/hrms/employees/100660.1/card?admin_card_no=100001.1
+router.get( '/employees/:empcode',      validate(employeeDetailSchema),  requireHrAdmin, getEmployee);       // [x] http://localhost:8000/hrms/employees/100660.1?admin_card_no=100001.1
+router.put( '/employees/:empcode',      validate(updateEmployeeSchema),  requireHrAdmin, editEmployee);      // [x] http://localhost:8000/hrms/employees/100660.1?admin_card_no=100001.1 {"email": "hahaha@.com"}
+router.get( '/employees',               validate(listEmployeesSchema),   requireHrAdmin, listEmployees);     // [x] http://localhost:8000/hrms/employees?admin_card_no=100001.1&status=A
 router.post('/employees',               validate(createEmployeeSchema),  requireHrAdmin, registerEmployee);  // [x] http://localhost:8000/hrms/employees?admin_card_no=100394.1 
 
 // ---------------------------------------------------------------------------
 // Duty roster  (read-only, ERP-owned DUTY_ROSTER)
 // ---------------------------------------------------------------------------
-router.get('/duty-roster/:card_no', validate(dutyRosterSchema), requireHrAdmin, employeeDutyRoster); // [X] http://localhost:8000/hrms/duty-roster/100108.1?admin_card_no=100017.3&month=MAY-26
+router.get('/duty-roster/:card_no', validate(dutyRosterSchema), requireHrAdmin, employeeDutyRoster); // [X] http://localhost:8000/hrms/duty-roster/100108.1?admin_card_no=100001.1&month=MAY-26
 
 export default router;

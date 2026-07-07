@@ -211,7 +211,7 @@ function downloadCSV(
     "Out Time",
     "Working Hrs",
     "Late",
-    "OT",
+    "Half Day",
     "Status",
   ];
   const rows = records.map((r) => [
@@ -220,8 +220,8 @@ function downloadCSV(
     r.in_time || "",
     r.out_time || "",
     `${r.w_hrs ?? 0}h ${r.w_mnt ?? 0}m`,
-    `${r.late_hrs ?? 0}h ${r.late_mnt ?? 0}m`,
-    `${r.ot_hrs ?? 0}h ${r.ot_mnt ?? 0}m`,
+    r.is_late ? "Late" : "",
+    r.is_half_day ? "Half Day" : "",
     r.status || "",
   ]);
 
@@ -639,6 +639,10 @@ export default function HRMSPage() {
   }
 
   function runReport() {
+    if (reportRange.from && reportRange.to && reportRange.to < reportRange.from) {
+      alert("“To Date” cannot be earlier than “From Date”.");
+      return;
+    }
     if (ctrl.reportEmployee) {
       ctrl.loadAttendanceReport(
         ctrl.reportEmployee,
@@ -901,24 +905,10 @@ export default function HRMSPage() {
                               <Calendar className="h-3.5 w-3.5 mr-1" />
                               Roster
                             </Button>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => openCard(emp.empcode)}
-                            >
-                              <IdCard className="h-3.5 w-3.5 mr-1" />
-                              ID Card
-                            </Button>
-                            {(emp.card_no || emp.atdtcard) && (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => viewLocation(emp.card_no || emp.atdtcard || "")}
-                              >
-                                <Navigation className="h-3.5 w-3.5 mr-1" />
-                                Location
-                              </Button>
-                            )}
+                            {/* "ID Card" and "Location" per-row actions removed (QA):
+                                ID cards have a dedicated page, and the per-row
+                                Location button only re-opened the shared Locations
+                                tab regardless of the employee. */}
                           </div>
                         </td>
                       </tr>
@@ -1001,8 +991,14 @@ export default function HRMSPage() {
                   label="From Date"
                   type="date"
                   value={reportRange.from}
+                  max={reportRange.to || undefined}
                   onChange={(e) =>
-                    setReportRange((r) => ({ ...r, from: e.target.value }))
+                    // Keep To >= From: if the new From is after To, push To along.
+                    setReportRange((r) => ({
+                      ...r,
+                      from: e.target.value,
+                      to: r.to && e.target.value > r.to ? e.target.value : r.to,
+                    }))
                   }
                 />
               </div>
@@ -1011,6 +1007,7 @@ export default function HRMSPage() {
                   label="To Date"
                   type="date"
                   value={reportRange.to}
+                  min={reportRange.from || undefined}
                   onChange={(e) =>
                     setReportRange((r) => ({ ...r, to: e.target.value }))
                   }
@@ -1054,13 +1051,13 @@ export default function HRMSPage() {
               },
               {
                 label: "Late",
-                value: `${Math.floor(summary.late_minutes / 60)}h ${summary.late_minutes % 60}m`,
-                cls: "text-orange-600",
+                value: summary.late_days ?? 0,
+                cls: "text-yellow-600",
               },
               {
-                label: "Overtime",
-                value: `${Math.floor(summary.overtime_minutes / 60)}h ${summary.overtime_minutes % 60}m`,
-                cls: "text-indigo-600",
+                label: "Half Day",
+                value: summary.half_days ?? 0,
+                cls: "text-orange-600",
               },
             ].map(({ label, value, cls }) => (
               <Card key={label}>
@@ -1160,7 +1157,7 @@ export default function HRMSPage() {
                         "Out Time",
                         "Working Hrs",
                         "Late",
-                        "OT",
+                        "Half Day",
                         "Status",
                         "Remarks",
                       ].map((h) => (
@@ -1175,21 +1172,19 @@ export default function HRMSPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {records.map((rec, i) => {
-                      const isLate =
-                        (rec.late_hrs ?? 0) > 0 || (rec.late_mnt ?? 0) > 0;
-                      const isAbsent =
-                        !rec.in_time &&
-                        !["SATURDAY", "SUNDAY"].includes(
-                          (rec.day_name || "").toUpperCase(),
-                        );
+                      const isLate = !!rec.is_late;
+                      const isHalf = !!rec.is_half_day;
+                      const isAbsent = !!rec.is_absent;
                       const isIncomplete = rec.in_time && !rec.out_time;
                       const rowCls = isAbsent
                         ? "bg-red-50/60"
-                        : isIncomplete
-                          ? "bg-amber-50/60"
-                          : isLate
+                        : isLate
+                          ? "bg-yellow-50/70"
+                          : isHalf
                             ? "bg-orange-50/60"
-                            : "hover:bg-gray-50/50";
+                            : isIncomplete
+                              ? "bg-amber-50/60"
+                              : "hover:bg-gray-50/50";
                       return (
                         <tr key={i} className={`transition-colors ${rowCls}`}>
                           <td className="px-4 py-3 text-sm font-medium text-gray-900">
@@ -1203,7 +1198,7 @@ export default function HRMSPage() {
                           </td>
                           <td className="px-4 py-3 text-sm">
                             <span
-                              className={`flex items-center gap-1 ${isLate ? "text-red-600 font-semibold" : "text-gray-600"}`}
+                              className={`flex items-center gap-1 ${isLate ? "text-yellow-700 font-semibold" : "text-gray-600"}`}
                             >
                               <Timer className="h-3.5 w-3.5 shrink-0" />
                               {rec.in_time || "—"}
@@ -1229,26 +1224,26 @@ export default function HRMSPage() {
                           </td>
                           <td className="px-4 py-3 text-sm">
                             {isLate ? (
-                              <span className="flex items-center gap-1 text-amber-700 font-medium">
+                              <span className="flex items-center gap-1 text-yellow-700 font-medium">
                                 <AlertTriangle className="h-3.5 w-3.5" />
-                                {rec.late_hrs ?? 0}h {rec.late_mnt ?? 0}m
+                                Late
                               </span>
                             ) : (
                               <span className="text-gray-400">—</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {(rec.ot_hrs ?? 0) > 0 || (rec.ot_mnt ?? 0) > 0
-                              ? `${rec.ot_hrs ?? 0}h ${rec.ot_mnt ?? 0}m`
-                              : "—"}
+                          <td className="px-4 py-3 text-sm">
+                            {isHalf ? (
+                              <span className="text-orange-600 font-medium">Half Day</span>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <Badge status={rec.status || "—"} />
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-500 italic">
-                            {isIncomplete
-                              ? "WH Waiting"
-                              : rec.roster_remarks || ""}
+                            {rec.roster_remarks || ""}
                           </td>
                         </tr>
                       );
@@ -1363,21 +1358,20 @@ export default function HRMSPage() {
                 onChange={(e) => updateField("religion", e.target.value)}
                 options={[
                   { value: "", label: "Select religion" },
-                  ...refReligions.map((r) => ({ value: r.code, label: r.label })),
+                  // Drop junk reference rows whose label is just a number (e.g. "1", "11").
+                  ...refReligions
+                    .filter((r) => r.label && !/^\d+$/.test(r.label.trim()))
+                    .map((r) => ({ value: r.code, label: r.label })),
                 ]}
               />
-              <DynamicSelect
+              <Select
                 label="Blood Group"
                 value={form.bldgrp || ""}
-                onChange={(v) => updateField("bldgrp", v)}
-                options={refBG.map((b) => ({ value: b.blood_group, label: b.blood_group }))}
-                onAdd={async (val) => {
-                  const res = await addBloodGroup(user!.card_no, val);
-                  setRefBG((prev) => [...prev, res]);
-                  return { value: res.blood_group, label: res.blood_group };
-                }}
-                addLabel="Add blood group"
-                addPlaceholder="e.g. A+"
+                onChange={(e) => updateField("bldgrp", e.target.value)}
+                options={[
+                  { value: "", label: refBG.length ? "Select blood group" : "Add in Setup → Blood Groups" },
+                  ...refBG.map((b) => ({ value: b.blood_group, label: b.blood_group })),
+                ]}
               />
               <Input
                 label="Mobile Number"
@@ -1425,18 +1419,12 @@ export default function HRMSPage() {
                 value={form.dtofappt || ""}
                 onChange={(e) => updateField("dtofappt", e.target.value)}
               />
-              <DynamicSelect
+              <SearchableSelect
                 label="Department"
                 value={form.dept_no?.toString() || ""}
                 onChange={(v) => updateField("dept_no", v)}
+                placeholder="Search department…"
                 options={refDepts.map((d) => ({ value: String(d.dept_no), label: d.dept_name }))}
-                onAdd={async (val) => {
-                  const res = await addDepartment(user!.card_no, val);
-                  setRefDepts((prev) => [...prev, res]);
-                  return { value: String(res.dept_no), label: res.dept_name };
-                }}
-                addLabel="Add department"
-                addPlaceholder="e.g. IT Department"
               />
               <SearchableSelect
                 label="Designation"
@@ -1500,11 +1488,12 @@ export default function HRMSPage() {
               <Input
                 label="Working Hours"
                 type="number"
+                min={0}
                 value={form.w_hour?.toString() || ""}
                 onChange={(e) =>
                   updateField(
                     "w_hour",
-                    e.target.value ? parseFloat(e.target.value) : undefined,
+                    e.target.value ? Math.max(0, parseFloat(e.target.value)) : undefined,
                   )
                 }
               />
@@ -1526,14 +1515,16 @@ export default function HRMSPage() {
                   <Input
                     label="Basic Salary"
                     type="number"
+                    min={0}
                     value={form.basic?.toString() ?? ""}
-                    onChange={(e) => updateField("basic", e.target.value ? parseFloat(e.target.value) : undefined)}
+                    onChange={(e) => updateField("basic", e.target.value ? Math.max(0, parseFloat(e.target.value)) : undefined)}
                   />
                   <Input
                     label="Gross Salary"
                     type="number"
+                    min={0}
                     value={form.gross?.toString() ?? ""}
-                    onChange={(e) => updateField("gross", e.target.value ? parseFloat(e.target.value) : undefined)}
+                    onChange={(e) => updateField("gross", e.target.value ? Math.max(0, parseFloat(e.target.value)) : undefined)}
                   />
                 </>
               ) : (

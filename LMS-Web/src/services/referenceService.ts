@@ -15,10 +15,8 @@ export interface Shift {
   late_end_tm?: string;
   half_day_tm?: string;
   half_day_end_tm?: string;
-  sat_start_tm?: string;
-  sat_end_time?: string;
-  sat_allow_in_tm?: string;
-  sat_haf_day_tm?: string;
+  
+ 
   late_sit_tm?: string;
   late_sit_allow_tm?: string;
   early_out_late_start?: string;
@@ -34,7 +32,6 @@ export interface Shift {
 export type ShiftInput = { shift: string } & Partial<Record<
   "shift_desc" | "time_from" | "time_to" | "overtime_start_time" | "allow_in_time"
   | "late_start_tm" | "late_end_tm" | "half_day_tm" | "half_day_end_tm"
-  | "sat_start_tm" | "sat_end_time" | "sat_allow_in_tm" | "sat_haf_day_tm"
   | "late_sit_tm" | "late_sit_allow_tm" | "early_out_late_start" | "early_out_late_end"
   | "early_out_hday_start" | "early_out_hday_end" | "duty_hrs" | "day_name", string>>;
 export interface ShiftLov    { shift: string; descr: string }

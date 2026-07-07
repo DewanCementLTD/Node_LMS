@@ -15,6 +15,7 @@ import oracledb from 'oracledb';
 import { getDirectConnection } from '../config/database.js';
 import { cardInt } from '../utils/conversionHelpers.js';
 import { saveAttendanceOriginPoint } from './location.service.js';
+import { cleanHHMM, rosterStatus } from '../utils/rosterStatus.js';
 
 const OBJ = { outFormat: oracledb.OUT_FORMAT_OBJECT };
 
@@ -59,13 +60,73 @@ const laterHHMM = (a, b) => {
   return ma >= mb ? a : b;
 };
 
-/** Minutes between two HH:MI strings (never negative). */
+/** Minutes between two HH:MI strings. If exit is earlier than entry the shift
+ *  crossed midnight (e.g. 20:00 -> 04:00), so add a full day. */
 const timeSpentMinutes = (entry, exit_) => {
   const e = hhmmToMin(entry);
   const x = hhmmToMin(exit_);
   if (e === null || x === null) return 0;
-  return Math.max(x - e, 0);
+  let diff = x - e;
+  if (diff < 0) diff += 1440;
+  return Math.max(diff, 0);
 };
+
+/** Normalise a raw TMS_DUTY_ROSTER_V row into the AttendanceRecord shape the
+ *  frontend expects, adding cleaned times, a status label and boolean flags. */
+const shapeRosterRow = (rec) => {
+  if (rec.roster_date instanceof Date) {
+    const y = rec.roster_date.getFullYear();
+    const m = String(rec.roster_date.getMonth() + 1).padStart(2, '0');
+    const d = String(rec.roster_date.getDate()).padStart(2, '0');
+    rec.roster_date = `${y}-${m}-${d}`;
+  }
+
+  const inTime = cleanHHMM(rec.in_time);
+  const outTime = cleanHHMM(rec.out_time);
+  const absent = rec.absent;
+  const morningLate = rec.morning_late;
+  const earlyOutLate = rec.early_out_late;
+  const halfDay = (rec.morning_half_day ?? 0) + (rec.ear_out_half_day ?? 0);
+
+  const status = rosterStatus(inTime, outTime, absent, morningLate, earlyOutLate, halfDay);
+  const worked = inTime && outTime ? timeSpentMinutes(inTime, outTime) : 0;
+
+  rec.in_time = inTime;
+  rec.out_time = outTime;
+  rec.w_hrs = Math.floor(worked / 60);
+  rec.w_mnt = worked % 60;
+  rec.late_hrs = 0;
+  rec.late_mnt = 0;
+  rec.ot_hrs = 0;
+  rec.ot_mnt = 0;
+  rec.absent_days = status === 'Absent' ? 1 : 0;
+  rec.half_day = halfDay;
+  rec.morning_late = String(morningLate ?? '').trim() || null;
+  rec.early_out_late = String(earlyOutLate ?? '').trim() || null;
+  rec.status = status;
+  rec.is_late = status === 'Late';
+  rec.is_absent = status === 'Absent';
+  rec.is_half_day = status === 'Half Day';
+  delete rec.morning_half_day;
+  delete rec.ear_out_half_day;
+  return rec;
+};
+
+const ROSTER_SELECT = `
+    TRUNC(ROSTER_DATE)      AS "roster_date",
+    DAY_NAME                AS "day_name",
+    ROSTER_SHIFT            AS "roster_shift",
+    ROSTER_MONTH            AS "roster_month",
+    IN_TIME                 AS "in_time",
+    OUT_TIME                AS "out_time",
+    ABSENT                  AS "absent",
+    MORNING_LATE            AS "morning_late",
+    EARLY_OUT_LATE          AS "early_out_late",
+    MORNING_HALF_DAY        AS "morning_half_day",
+    EAR_OUT_HALF_DAY        AS "ear_out_half_day",
+    LEAVE_REMARKS           AS "leave_remarks",
+    ROSTER_REMARKS          AS "roster_remarks"
+`;
 
 // Transient DB errors that should be retried rather than dropped: MAX(PK)+1 id
 // races (unique-violation) on concurrent check-ins, plus deadlock/serialization.
@@ -310,6 +371,7 @@ const updateCheckOut = async (recordId, entryTime, opts = {}) => {
           `
           UPDATE ATTENDANCE_RECORDS
           SET EXIT_TIME  = :exit_time,
+              EXIT_DATE  = SYSDATE,
               TIME_SPENT = :time_spent${locSet}
           WHERE ID = :rid
           `,
@@ -347,7 +409,6 @@ const updateCheckOut = async (recordId, entryTime, opts = {}) => {
 
 export const smartMarkAttendance = async (card_no, attendance_type = 'check_in', opts = {}) => {
   const record = await getTodayRecord(card_no);
-
   const checkInOpts = {
     latitude: opts.latitude,
     longitude: opts.longitude,
@@ -391,48 +452,34 @@ export const smartMarkAttendance = async (card_no, attendance_type = 'check_in',
 };
 
 // ---------------------------------------------------------------------------
-// Reports (mirror get_attendance_report / _range / _summary)
+// Reports — sourced from TMS_DUTY_ROSTER_V (the ERP duty-roster view), mirror
+// FastAPI's attendance_repository.py get_attendance_report / _range / _summary.
+//
+// The view carries the ERP's own per-person-per-day roster with the derived
+// status flags the app cannot compute itself:
+//   MORNING_LATE / EARLY_OUT_LATE = 'Y'  -> late      (shown yellow)
+//   MORNING_HALF_DAY / EAR_OUT_HALF_DAY  -> half day  (shown orange)
+//   ABSENT = 1 with no punch             -> absent    (shown red)
+// CARD_NO in the view is the full company-qualified card (e.g. 100011.2).
 // ---------------------------------------------------------------------------
 
-// Single-day report accepts either ISO 'YYYY-MM-DD' (e.g. '2026-06-29') or the
-// ORDS-style 'DD-MON-YYYY' (e.g. '9-feb-2026') the Flutter client may send.
-// Returns the matching Oracle TO_DATE(...) expression for the :dt bind so the
-// same date_str the FastAPI backend accepts keeps working here — plus ISO.
-const dateExprFor = (date_str) =>
-  /^\d{4}-\d{2}-\d{2}$/.test(String(date_str).trim())
-    ? "TO_DATE(:dt, 'YYYY-MM-DD')"
-    : "TO_DATE(:dt, 'DD-MON-YYYY', 'NLS_DATE_LANGUAGE=ENGLISH')";
-
-/** Single-day report. date_str: ISO 'YYYY-MM-DD' or ORDS-style 'DD-MON-YYYY'. */
+/** Single-day roster row for a card. date_str: ORDS-style 'DD-MON-YYYY'. */
 export const getAttendanceReport = async (card_no, date_str) => {
   let connection;
   try {
     connection = await getDirectConnection();
     const result = await connection.execute(
       `
-      SELECT
-          TO_CHAR(TRUNC(ATTENDANCE_DATE), 'YYYY-MM-DD') AS "roster_date",
-          ENTRY_TIME                      AS "in_time",
-          EXIT_TIME                       AS "out_time",
-          'G'                             AS "roster_shift",
-          0                               AS "absent_days",
-          CASE WHEN ENTRY_TIME IS NOT NULL THEN 'Present' ELSE 'Absent' END AS "status",
-          FLOOR(NVL(TIME_SPENT, 0) / 60)  AS "w_hrs",
-          MOD(NVL(TIME_SPENT, 0), 60)     AS "w_mnt",
-          0                               AS "late_hrs",
-          0                               AS "late_mnt",
-          0                               AS "ot_hrs",
-          0                               AS "ot_mnt",
-          CAST(NULL AS VARCHAR2(200))     AS "roster_remarks",
-          CAST(NULL AS VARCHAR2(20))      AS "day_name"
-      FROM ATTENDANCE_RECORDS
+      SELECT ${ROSTER_SELECT}
+      FROM TMS_DUTY_ROSTER_V
       WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
-        AND TRUNC(ATTENDANCE_DATE) = ${dateExprFor(date_str)}
+        AND TRUNC(ROSTER_DATE) = TO_DATE(:dt, 'DD-MON-YYYY')
+      ORDER BY ROSTER_DATE
       `,
       { card: card_no, card_int: cardInt(card_no), dt: date_str },
       OBJ,
     );
-    return result.rows ?? [];
+    return (result.rows ?? []).map(shapeRosterRow);
   } catch (e) {
     if (String(e.message ?? e).includes('ORA-00942')) return [];
     throw e;
@@ -441,47 +488,27 @@ export const getAttendanceReport = async (card_no, date_str) => {
   }
 };
 
-/** Bulk date-range report. from_date/to_date: 'YYYY-MM-DD'. One row per day. */
+/** Fetch one employee's roster rows in a date range from TMS_DUTY_ROSTER_V.
+ *  from_date/to_date: 'YYYY-MM-DD'. Each row carries the ERP late / half-day /
+ *  absent flags so the report can colour late (yellow), half-day (orange) and
+ *  absent (red). */
 export const getAttendanceReportRange = async (card_no, from_date, to_date) => {
   let connection;
   try {
     connection = await getDirectConnection();
     const result = await connection.execute(
       `
-      SELECT
-          TO_CHAR(TRUNC(ATTENDANCE_DATE), 'YYYY-MM-DD') AS "roster_date",
-          MIN(ENTRY_TIME)                 AS "in_time",
-          MAX(EXIT_TIME)                  AS "out_time",
-          'G'                             AS "roster_shift",
-          0                               AS "absent_days",
-          CASE
-              WHEN MIN(ENTRY_TIME) IS NOT NULL THEN 'Present'
-              ELSE 'Absent'
-          END                             AS "status",
-          CASE WHEN MAX(TIME_SPENT) IS NOT NULL
-               THEN FLOOR(MAX(TIME_SPENT) / 60) ELSE 0
-          END                             AS "w_hrs",
-          CASE WHEN MAX(TIME_SPENT) IS NOT NULL
-               THEN MOD(MAX(TIME_SPENT), 60) ELSE 0
-          END                             AS "w_mnt",
-          0                               AS "late_hrs",
-          0                               AS "late_mnt",
-          0                               AS "ot_hrs",
-          0                               AS "ot_mnt",
-          MAX(ADDRESS)                    AS "roster_remarks",
-          CAST(NULL AS VARCHAR2(20))      AS "day_name"
-      FROM ATTENDANCE_RECORDS
-      WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
-             OR TO_CHAR(EMPCODE) = :card OR TO_CHAR(EMPCODE) = :card_int)
-        AND TRUNC(ATTENDANCE_DATE) BETWEEN
+      SELECT ${ROSTER_SELECT}
+      FROM TMS_DUTY_ROSTER_V
+      WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+        AND TRUNC(ROSTER_DATE) BETWEEN
             TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
-      GROUP BY TRUNC(ATTENDANCE_DATE)
-      ORDER BY TRUNC(ATTENDANCE_DATE)
+      ORDER BY ROSTER_DATE
       `,
       { card: card_no, card_int: cardInt(card_no), from_d: from_date, to_d: to_date },
       OBJ,
     );
-    return result.rows ?? [];
+    return (result.rows ?? []).map(shapeRosterRow);
   } catch (e) {
     if (String(e.message ?? e).includes('ORA-00942')) return [];
     throw e;
@@ -490,30 +517,48 @@ export const getAttendanceReportRange = async (card_no, from_date, to_date) => {
   }
 };
 
-/** Aggregated stats for a date range. from_date/to_date: 'YYYY-MM-DD'. */
+/** Aggregate one employee's roster over a date range from TMS_DUTY_ROSTER_V.
+ *  Present = has a punch; Absent = flagged absent with no punch; Late / Half-Day
+ *  are counted from the ERP flags. from_date / to_date: 'YYYY-MM-DD'. */
 export const getAttendanceSummary = async (card_no, from_date, to_date) => {
   let connection;
   try {
     connection = await getDirectConnection();
+    const card_int = cardInt(card_no);
     const result = await connection.execute(
       `
+      WITH r AS (
+          SELECT
+              CASE WHEN IN_TIME  IS NOT NULL AND TRIM(IN_TIME)  <> ':'
+                   THEN 1 ELSE 0 END                          AS has_in,
+              CASE WHEN OUT_TIME IS NOT NULL AND TRIM(OUT_TIME) <> ':'
+                   THEN 1 ELSE 0 END                          AS has_out,
+              NVL(ABSENT, 0)                                  AS absent,
+              CASE WHEN UPPER(NVL(MORNING_LATE, ' ')) = 'Y'
+                     OR UPPER(NVL(EARLY_OUT_LATE, ' ')) = 'Y'
+                   THEN 1 ELSE 0 END                          AS is_late,
+              CASE WHEN NVL(MORNING_HALF_DAY, 0) > 0
+                     OR NVL(EAR_OUT_HALF_DAY, 0) > 0
+                   THEN 1 ELSE 0 END                          AS is_half
+          FROM TMS_DUTY_ROSTER_V
+          WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+            AND TRUNC(ROSTER_DATE) BETWEEN
+                TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
+      )
       SELECT
           COUNT(*)                                                     AS "total_days",
-          SUM(CASE WHEN ENTRY_TIME IS NOT NULL
-                        AND EXIT_TIME IS NOT NULL THEN 1 ELSE 0 END)  AS "present",
-          SUM(CASE WHEN ENTRY_TIME IS NOT NULL
-                        AND EXIT_TIME IS NULL THEN 1 ELSE 0 END)      AS "incomplete",
-          NVL(SUM(NVL(TIME_SPENT, 0)), 0)                              AS "total_minutes",
+          SUM(CASE WHEN has_in = 1 OR has_out = 1 THEN 1 ELSE 0 END)   AS "present",
+          SUM(CASE WHEN has_in = 1 AND has_out = 0 THEN 1 ELSE 0 END)  AS "incomplete",
+          0                                                            AS "total_minutes",
           0                                                            AS "late_minutes",
           0                                                            AS "overtime_minutes",
-          0                                                            AS "absent_days"
-      FROM ATTENDANCE_RECORDS
-      WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
-             OR TO_CHAR(EMPCODE) = :card OR TO_CHAR(EMPCODE) = :card_int)
-        AND TRUNC(ATTENDANCE_DATE) BETWEEN
-            TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
+          SUM(CASE WHEN absent = 1 AND has_in = 0 AND has_out = 0
+                   THEN 1 ELSE 0 END)                                  AS "absent_days",
+          SUM(is_late)                                                 AS "late_days",
+          SUM(is_half)                                                 AS "half_days"
+      FROM r
       `,
-      { card: card_no, card_int: cardInt(card_no), from_d: from_date, to_d: to_date },
+      { card: card_no, card_int, from_d: from_date, to_d: to_date },
       OBJ,
     );
     return result.rows?.[0] ?? {};

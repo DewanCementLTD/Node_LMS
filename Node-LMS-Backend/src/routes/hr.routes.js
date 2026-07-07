@@ -13,11 +13,11 @@ const router = Router();
 // ---------------------------------------------------------------------------
 // Employee search (whole EMPLOYEE view — NOT company/branch scoped, matches FastAPI /hr)
 // ---------------------------------------------------------------------------
-router.get('/employees/search', validate(hrSearchEmployeesSchema), requireHrAdmin, hrSearchEmployees); // [x] http://localhost:8000/hr/employees/search?q=ali&admin_card_no=100017.3
+router.get('/employees/search', validate(hrSearchEmployeesSchema), requireHrAdmin, hrSearchEmployees); // [x] http://localhost:8000/hr/employees/search?q=Saad&admin_card_no=100001.1
 
 // ---------------------------------------------------------------------------
 // Face enrollment (HR-initiated; requires >= 10 frames)
 // ---------------------------------------------------------------------------
-router.post('/face/enroll', validate(hrFaceEnrollSchema), requireHrAdmin, hrEnrollEmployeeFace); // [ ] http://localhost:8000/hr/face/enroll?admin_card_no=100017.3  Body: {"card_no":"100002.1","frames":["f1","f2","f3","f4","f5","f6","f7","f8","f9","f10"]}
+router.post('/face/enroll', validate(hrFaceEnrollSchema), requireHrAdmin, hrEnrollEmployeeFace); // [x] http://localhost:8000/hr/face/enroll?admin_card_no=100017.3  Body: {"card_no":"100002.1","frames":["f1","f2","f3","f4","f5","f6","f7","f8","f9","f10"]}
 
 export default router;

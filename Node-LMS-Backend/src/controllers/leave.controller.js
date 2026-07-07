@@ -1,9 +1,25 @@
-import { getLeaveBalancesData, getLeaveStatusData, applyLeaveData } from '../services/leave.service.js';
+import {
+  getLeaveBalancesData,
+  getLeaveTypesData,
+  getLeaveStatusData,
+  applyLeaveData,
+} from '../services/leave.service.js';
 
 export const getLeaveBalances = async (req, res, next) => {
   try {
     const { card_no } = res.locals.validated.params;
     const items = await getLeaveBalancesData(card_no);
+    res.json({ items });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /auth/leave-types/:card_no  — full LEAVE_TYPES LOV merged with balances.
+export const getLeaveTypes = async (req, res, next) => {
+  try {
+    const { card_no } = res.locals.validated.params;
+    const items = await getLeaveTypesData(card_no);
     res.json({ items });
   } catch (err) {
     next(err);

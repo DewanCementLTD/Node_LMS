@@ -18,6 +18,19 @@ Key columns:
     DEVICE_TYPE (VARCHAR2(100)), DEVICE_INFO (VARCHAR2(400)),
     APP_VERSION (VARCHAR2(400)), TIMESTAMP (VARCHAR2(400)),
     CLIENT_IP (VARCHAR2(100)), SCREENSHOT_FILENAME (VARCHAR2(200))
+    CHECKOUT_LATS / CHECKOUT_LONGS (VARCHAR2(50)), CHECKOUT_ADDRESS (VARCHAR2(400))
+        — the check-out location, kept separate from the check-in location above.
+
+    EXIT_DATE (DATE)              — the actual check-out instant; set on check-out
+        (update_check_out writes SYSDATE). OUT_DT is derived from this.
+
+Virtual (read-only, auto-derived) columns — do NOT insert/update them:
+    IN_DT (VARCHAR2(30))   — ENTRY_TIME + ATTENDANCE_DATE, 'DD-MON-YY HH24:MI'.
+    OUT_DT (VARCHAR2(30))  — EXIT_DATE formatted 'DD-MON-YY HH24:MI'
+        (naturally rolls to the next day for overnight shifts).
+    TOTAL_HOURS (VARCHAR2(20)) — TIME_SPENT shown as HRS:MINS (zero-padded HH:MM).
+    These are computed from the columns above, so they always stay in sync and
+    require no virtual-column write. See sql/2026-06-24_attendance_virtual_cols.sql.
 """
 
 from datetime import datetime
@@ -85,12 +98,15 @@ def _run_with_retry(fn, attempts: int = 5, what: str = ""):
 
 
 def _time_spent_minutes(entry: str, exit_: str) -> int:
-    """Calculate minutes between two HH:MI strings."""
+    """Minutes between two HH:MI strings. If exit is earlier than entry the
+    shift crossed midnight (e.g. 20:00 -> 04:00), so add a full day."""
     try:
         fmt = "%H:%M"
         t1 = datetime.strptime(entry.strip()[:5], fmt)
         t2 = datetime.strptime(exit_.strip()[:5], fmt)
         diff = (t2 - t1).total_seconds() / 60
+        if diff < 0:
+            diff += 1440   # overnight shift
         return max(int(diff), 0)
     except Exception:
         return 0
@@ -116,6 +132,7 @@ def get_today_record(card_no: str):
             WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
               AND TRUNC(ATTENDANCE_DATE) = TRUNC(SYSDATE)
             ORDER BY ID DESC
+            FETCH FIRST 1 ROWS ONLY
         """, {"card": card_no, "card_int": card_int})
         row = cursor.fetchone()
         if row:
@@ -126,6 +143,78 @@ def get_today_record(card_no: str):
                 "card_no": (row[3] or card_no),
                 "source": "attendance_records",
             }
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_open_overnight_record(card_no: str, max_window_hours: int = 16):
+    """For a NIGHT-shift worker, return a still-open check-in from a PRIOR day
+    that the current (after-midnight) mark should close, or None.
+
+    Used when there is no record for *today*: a person on an overnight shift
+    (DUTY_ROSTER shift whose SHIFT_HEAD time_to is earlier than time_from, e.g.
+    20:00 -> 04:00) who checked in last night and is now marking their check-out
+    after midnight. We only do this when the open check-in is recent (within
+    max_window_hours) so a genuinely forgotten check-out becomes a fresh day,
+    not a 24-hour shift.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    card_int = _card_int(card_no)
+    try:
+        # Most recent OPEN check-in from a previous day, with hours since entry.
+        cursor.execute("""
+            SELECT ID, ENTRY_TIME, TO_CHAR(CARD_NO), EMPCODE,
+                   TO_CHAR(ATTENDANCE_DATE, 'YYYY-MM-DD'),
+                   (SYSDATE - (TRUNC(ATTENDANCE_DATE)
+                               + TO_NUMBER(SUBSTR(ENTRY_TIME,1,2))/24
+                               + TO_NUMBER(SUBSTR(ENTRY_TIME,4,2))/1440)) * 24 AS hrs_since_in
+            FROM ATTENDANCE_RECORDS
+            WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+              AND ENTRY_TIME IS NOT NULL AND EXIT_TIME IS NULL
+              AND TRUNC(ATTENDANCE_DATE) < TRUNC(SYSDATE)
+              AND REGEXP_LIKE(ENTRY_TIME, '^[0-9][0-9]:[0-9][0-9]$')
+            ORDER BY ID DESC
+            FETCH FIRST 1 ROWS ONLY
+        """, {"card": card_no, "card_int": card_int})
+        row = cursor.fetchone()
+        if not row:
+            return None
+        rid, entry, card_full, empcode, rdate, hrs = row
+        if hrs is None or hrs < 1 or hrs > max_window_hours:
+            return None  # <1h (handled elsewhere) or too old (forgotten checkout)
+
+        # Was that day's shift an OVERNIGHT one (time_to < time_from)?
+        cursor.execute("""
+            SELECT sh.TIME_FROM, sh.TIME_TO
+            FROM SHIFT_HEAD sh
+            WHERE sh.compc = (SELECT TO_NUMBER(MAX(UNIT_ID)) FROM HR_EMP_MASTER WHERE EMPCODE = :emp)
+              AND sh.shift = (
+                    SELECT MIN(ROSTER_SHIFT) FROM DUTY_ROSTER
+                     WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
+                            OR TO_CHAR(EMP_FK) = :card)
+                       AND TRUNC(ROSTER_DATE) = TO_DATE(:rdate, 'YYYY-MM-DD'))
+              AND ROWNUM = 1
+        """, {"emp": empcode, "card": card_no, "card_int": card_int, "rdate": rdate})
+        sh = cursor.fetchone()
+        if not sh:
+            return None
+        time_from, time_to = (sh[0] or "").strip(), (sh[1] or "").strip()
+        # Overnight only when the shift end is earlier in the clock than its start.
+        if not time_from or not time_to or time_to >= time_from:
+            return None
+
+        return {
+            "id": rid,
+            "entry_time": (entry or "").strip(),
+            "exit_time": "",
+            "card_no": (card_full or card_no),
+            "source": "attendance_records",
+        }
+    except Exception as e:
+        print(f"[OVERNIGHT] lookup failed for card={card_no}: {e}")
         return None
     finally:
         cursor.close()
@@ -144,17 +233,13 @@ def _card_int(card_no: str) -> str:
 def _get_empcode(card_no: str) -> str:
     conn = get_connection()
     cursor = conn.cursor()
-    card_int = _card_int(card_no)
     try:
         cursor.execute("""
-            SELECT EMPCODE FROM HR_EMP_MASTER
-            WHERE TO_CHAR("ATDTCARD#") = :card OR TO_CHAR("ATDTCARD#") = :card_int
-               OR EMPCODE = :card OR EMPCODE = :card_int
-        """, {"card": card_no, "card_int": card_int})
+            SELECT EMPCODE FROM EMPLOYEE
+            WHERE TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
+        """, {"card": card_no, "card_int": _card_int(card_no)})
         row = cursor.fetchone()
-        return row[0] if (row and row[0]) else card_no
-    except Exception:
-        return card_no
+        return row[0] if row else card_no
     finally:
         cursor.close()
         conn.close()
@@ -336,9 +421,13 @@ def update_check_out(record_id: int, entry_time: str, card_no: str = None,
                        "\n                CHECKOUT_LONGS   = :co_long,"
                        "\n                CHECKOUT_ADDRESS = :co_addr")
 
+        # EXIT_DATE = the actual check-out instant (full date-time). OUT_DT is a
+        # virtual column derived from it (formatted DD-MON-YY HH24:MI), so this
+        # is what drives the displayed check-out date-time.
         _run_with_retry(lambda: cursor.execute(f"""
             UPDATE ATTENDANCE_RECORDS
             SET EXIT_TIME  = :exit_time,
+                EXIT_DATE  = SYSDATE,
                 TIME_SPENT = :time_spent{loc_set}
             WHERE ID = :rid
         """, params),
@@ -362,47 +451,125 @@ def update_check_out(record_id: int, entry_time: str, card_no: str = None,
 
 
 # ------------------------------------------------------------------
-# ATTENDANCE REPORT — single day (ORDS-style date)
+# ATTENDANCE REPORT — sourced from TMS_DUTY_ROSTER_V (the ERP duty-roster view)
+#
+# The view carries the ERP's own per-person-per-day roster with the derived
+# status flags the app cannot compute itself:
+#   MORNING_LATE / EARLY_OUT_LATE = 'Y'  → late      (shown yellow)
+#   MORNING_HALF_DAY / EAR_OUT_HALF_DAY  → half day  (shown orange)
+#   ABSENT = 1 with no punch             → absent    (shown red)
+# ABSENT = 1 is the roster's *default* until the ERP reconciles a punch, so a
+# row is only truly "Absent" when it also has no IN/OUT time. Late / half-day
+# imply attendance, so they take priority over the absent flag.
+# CARD_NO in the view is the full company-qualified card (e.g. 100011.2).
 # ------------------------------------------------------------------
 
+def _clean_hhmm(s):
+    """Return an 'HH:MI' string, or None for empty/':' placeholders the ERP
+    leaves in IN_TIME / OUT_TIME when there was no punch."""
+    if s is None:
+        return None
+    t = str(s).strip()
+    if not t or t == ":" or _hhmm_to_min(t) is None:
+        return None
+    return t[:5]
+
+
+def _roster_status(in_time, out_time, absent, morning_late, early_out_late, half_day):
+    """Collapse the ERP roster flags into a single status label. Order matters:
+    late / half-day imply the person attended, so they win over the ABSENT
+    default; a row is only 'Absent' when flagged absent AND has no punch."""
+    ml = (morning_late or "").strip().upper()
+    eol = (early_out_late or "").strip().upper()
+    has_punch = bool(in_time) or bool(out_time)
+    try:
+        hd = float(half_day or 0)
+    except (TypeError, ValueError):
+        hd = 0
+    if ml == "Y" or eol == "Y":
+        return "Late"
+    if hd > 0:
+        return "Half Day"
+    if absent and int(absent) == 1 and not has_punch:
+        return "Absent"
+    if has_punch:
+        return "Present"
+    return "Off"
+
+
+def _shape_roster_row(rec):
+    """Normalise a raw TMS_DUTY_ROSTER_V dict into the AttendanceRecord shape the
+    frontend expects, adding cleaned times, a status label and boolean flags."""
+    if rec.get("roster_date") and hasattr(rec["roster_date"], "strftime"):
+        rec["roster_date"] = rec["roster_date"].strftime("%Y-%m-%d")
+
+    in_time = _clean_hhmm(rec.get("in_time"))
+    out_time = _clean_hhmm(rec.get("out_time"))
+    absent = rec.get("absent")
+    morning_late = rec.get("morning_late")
+    early_out_late = rec.get("early_out_late")
+    half_day = (rec.get("morning_half_day") or 0) + (rec.get("ear_out_half_day") or 0)
+
+    status = _roster_status(in_time, out_time, absent, morning_late, early_out_late, half_day)
+
+    worked = _time_spent_minutes(in_time, out_time) if (in_time and out_time) else 0
+
+    rec["in_time"] = in_time
+    rec["out_time"] = out_time
+    rec["w_hrs"] = worked // 60
+    rec["w_mnt"] = worked % 60
+    rec["late_hrs"] = 0
+    rec["late_mnt"] = 0
+    rec["ot_hrs"] = 0
+    rec["ot_mnt"] = 0
+    rec["absent_days"] = 1 if status == "Absent" else 0
+    rec["half_day"] = half_day
+    rec["morning_late"] = (morning_late or "").strip() or None
+    rec["early_out_late"] = (early_out_late or "").strip() or None
+    rec["status"] = status
+    rec["is_late"] = status == "Late"
+    rec["is_absent"] = status == "Absent"
+    rec["is_half_day"] = status == "Half Day"
+    for k in ("morning_half_day", "ear_out_half_day"):
+        rec.pop(k, None)
+    return rec
+
+
+_ROSTER_SELECT = """
+    TRUNC(ROSTER_DATE)      AS roster_date,
+    DAY_NAME                AS day_name,
+    ROSTER_SHIFT            AS roster_shift,
+    ROSTER_MONTH            AS roster_month,
+    IN_TIME                 AS in_time,
+    OUT_TIME                AS out_time,
+    ABSENT                  AS absent,
+    MORNING_LATE            AS morning_late,
+    EARLY_OUT_LATE          AS early_out_late,
+    MORNING_HALF_DAY        AS morning_half_day,
+    EAR_OUT_HALF_DAY        AS ear_out_half_day,
+    LEAVE_REMARKS           AS leave_remarks,
+    ROSTER_REMARKS          AS roster_remarks
+"""
+
+
 def get_attendance_report(card_no: str, date_str: str):
-    """date_str: ORDS-style e.g. '9-feb-2026' (DD-MON-YYYY)."""
+    """Single-day roster row for a card. date_str: ORDS-style 'DD-MON-YYYY'."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("""
-            SELECT
-                TRUNC(ATTENDANCE_DATE)          AS roster_date,
-                ENTRY_TIME                      AS in_time,
-                EXIT_TIME                       AS out_time,
-                'G'                             AS roster_shift,
-                0                               AS absent_days,
-                CASE WHEN ENTRY_TIME IS NOT NULL THEN 'Present' ELSE 'Absent' END AS status,
-                FLOOR(NVL(TIME_SPENT, 0) / 60)  AS w_hrs,
-                MOD(NVL(TIME_SPENT, 0), 60)     AS w_mnt,
-                0                               AS late_hrs,
-                0                               AS late_mnt,
-                0                               AS ot_hrs,
-                0                               AS ot_mnt,
-                CAST(NULL AS VARCHAR2(200))     AS roster_remarks,
-                CAST(NULL AS VARCHAR2(20))      AS day_name
-            FROM ATTENDANCE_RECORDS
+        cursor.execute(f"""
+            SELECT {_ROSTER_SELECT}
+            FROM TMS_DUTY_ROSTER_V
             WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
-              AND TRUNC(ATTENDANCE_DATE) = TO_DATE(:dt, 'DD-MON-YYYY')
+              AND TRUNC(ROSTER_DATE) = TO_DATE(:dt, 'DD-MON-YYYY')
+            ORDER BY ROSTER_DATE
         """, {"card": card_no, "card_int": _card_int(card_no), "dt": date_str})
 
-        rows = cursor.fetchall()
         columns = [col[0].lower() for col in cursor.description]
-        result = [dict(zip(columns, r)) for r in rows]
-
-        for row in result:
-            if row.get("roster_date") and hasattr(row["roster_date"], "strftime"):
-                row["roster_date"] = row["roster_date"].strftime("%Y-%m-%d")
-
+        result = [_shape_roster_row(dict(zip(columns, r))) for r in cursor.fetchall()]
         return result
     except Exception as e:
-        err = str(e)
-        if "ORA-00942" in err:
+        if "ORA-00942" in str(e):
             return []
         raise
     finally:
@@ -411,102 +578,33 @@ def get_attendance_report(card_no: str, date_str: str):
 
 
 # ------------------------------------------------------------------
-# ATTENDANCE REPORT — bulk date range
-# Reads from ATTENDANCE_RECORDS first; falls back to DUTY_ROSTER.
+# ATTENDANCE REPORT — date range (one row per roster day)
 # ------------------------------------------------------------------
 
 def get_attendance_report_range(card_no: str, from_date: str, to_date: str):
-    """Fetch attendance records in a date range. from_date/to_date: 'YYYY-MM-DD'.
-
-    Tries ATTENDANCE_RECORDS (mobile check-ins) first; falls back to DUTY_ROSTER
-    (ERP-populated) when ATTENDANCE_RECORDS returns no rows for the range.
-    """
+    """Fetch one employee's roster rows in a date range from TMS_DUTY_ROSTER_V.
+    from_date/to_date: 'YYYY-MM-DD'. Each row carries the ERP late / half-day /
+    absent flags so the report can colour late (yellow), half-day (orange) and
+    absent (red)."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
         card_int = _card_int(card_no)
-        params = {"card": card_no, "card_int": card_int, "from_d": from_date, "to_d": to_date}
-
-        cursor.execute("""
-            SELECT
-                TRUNC(ATTENDANCE_DATE)          AS roster_date,
-                MIN(ENTRY_TIME)                 AS in_time,
-                MAX(EXIT_TIME)                  AS out_time,
-                'G'                             AS roster_shift,
-                0                               AS absent_days,
-                CASE
-                    WHEN MIN(ENTRY_TIME) IS NOT NULL THEN 'Present'
-                    ELSE 'Absent'
-                END                             AS status,
-                CASE WHEN MAX(TIME_SPENT) IS NOT NULL
-                     THEN FLOOR(MAX(TIME_SPENT) / 60) ELSE 0
-                END                             AS w_hrs,
-                CASE WHEN MAX(TIME_SPENT) IS NOT NULL
-                     THEN MOD(MAX(TIME_SPENT), 60) ELSE 0
-                END                             AS w_mnt,
-                0                               AS late_hrs,
-                0                               AS late_mnt,
-                0                               AS ot_hrs,
-                0                               AS ot_mnt,
-                MAX(ADDRESS)                    AS roster_remarks,
-                CAST(NULL AS VARCHAR2(20))      AS day_name
-            FROM ATTENDANCE_RECORDS
-            WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
-                   OR TO_CHAR(EMPCODE) = :card OR TO_CHAR(EMPCODE) = :card_int)
-              AND TRUNC(ATTENDANCE_DATE) BETWEEN
+        cursor.execute(f"""
+            SELECT {_ROSTER_SELECT}
+            FROM TMS_DUTY_ROSTER_V
+            WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+              AND TRUNC(ROSTER_DATE) BETWEEN
                   TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
-            GROUP BY TRUNC(ATTENDANCE_DATE)
-            ORDER BY TRUNC(ATTENDANCE_DATE)
-        """, params)
+            ORDER BY ROSTER_DATE
+        """, {"card": card_no, "card_int": card_int, "from_d": from_date, "to_d": to_date})
 
-        rows = cursor.fetchall()
         columns = [col[0].lower() for col in cursor.description]
-        result = [dict(zip(columns, r)) for r in rows]
-        for row in result:
-            if row.get("roster_date") and hasattr(row["roster_date"], "strftime"):
-                row["roster_date"] = row["roster_date"].strftime("%Y-%m-%d")
-
-        if result:
-            return result
-
-        # Fallback: read from DUTY_ROSTER (ERP-owned, populated automatically)
-        try:
-            cursor.execute("""
-                SELECT
-                    TRUNC(ROSTER_DATE)  AS roster_date,
-                    IN_TIME             AS in_time,
-                    OUT_TIME            AS out_time,
-                    ROSTER_SHIFT        AS roster_shift,
-                    0                   AS absent_days,
-                    CASE WHEN IN_TIME IS NOT NULL THEN 'Present' ELSE 'Absent' END AS status,
-                    0                   AS w_hrs,
-                    0                   AS w_mnt,
-                    0                   AS late_hrs,
-                    0                   AS late_mnt,
-                    0                   AS ot_hrs,
-                    0                   AS ot_mnt,
-                    ROSTER_REMARKS      AS roster_remarks,
-                    DAY_NAME            AS day_name
-                FROM DUTY_ROSTER
-                WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
-                  AND TRUNC(ROSTER_DATE) BETWEEN
-                      TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
-                ORDER BY TRUNC(ROSTER_DATE)
-            """, params)
-            rows = cursor.fetchall()
-            columns = [col[0].lower() for col in cursor.description]
-            result = [dict(zip(columns, r)) for r in rows]
-            for row in result:
-                if row.get("roster_date") and hasattr(row["roster_date"], "strftime"):
-                    row["roster_date"] = row["roster_date"].strftime("%Y-%m-%d")
-            return result
-        except Exception as dr_err:
-            print(f"[ATTENDANCE_RANGE] DUTY_ROSTER fallback failed: {dr_err}")
-            return []
+        result = [_shape_roster_row(dict(zip(columns, r))) for r in cursor.fetchall()]
+        return result
 
     except Exception as e:
-        err = str(e)
-        if "ORA-00942" in err:
+        if "ORA-00942" in str(e):
             return []
         raise
     finally:
@@ -515,70 +613,57 @@ def get_attendance_report_range(card_no: str, from_date: str, to_date: str):
 
 
 # ------------------------------------------------------------------
-# ATTENDANCE SUMMARY — aggregated stats for date range
-# Reads from ATTENDANCE_RECORDS first; falls back to DUTY_ROSTER.
+# ATTENDANCE SUMMARY — aggregated stats for a date range
 # ------------------------------------------------------------------
 
 def get_attendance_summary(card_no: str, from_date: str, to_date: str):
-    """from_date / to_date: 'YYYY-MM-DD'. Reads ATTENDANCE_RECORDS; falls back to DUTY_ROSTER."""
+    """Aggregate one employee's roster over a date range from TMS_DUTY_ROSTER_V.
+    Present = has a punch; Absent = flagged absent with no punch; Late / Half-Day
+    are counted from the ERP flags. from_date / to_date: 'YYYY-MM-DD'."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
         card_int = _card_int(card_no)
-        params = {"card": card_no, "card_int": card_int, "from_d": from_date, "to_d": to_date}
-
         cursor.execute("""
-            SELECT
-                COUNT(*)                                                     AS total_days,
-                SUM(CASE WHEN ENTRY_TIME IS NOT NULL
-                              AND EXIT_TIME IS NOT NULL THEN 1 ELSE 0 END)  AS present,
-                SUM(CASE WHEN ENTRY_TIME IS NOT NULL
-                              AND EXIT_TIME IS NULL THEN 1 ELSE 0 END)      AS incomplete,
-                NVL(SUM(NVL(TIME_SPENT, 0)), 0)                              AS total_minutes,
-                0                                                            AS late_minutes,
-                0                                                            AS overtime_minutes,
-                0                                                            AS absent_days
-            FROM ATTENDANCE_RECORDS
-            WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
-                   OR TO_CHAR(EMPCODE) = :card OR TO_CHAR(EMPCODE) = :card_int)
-              AND TRUNC(ATTENDANCE_DATE) BETWEEN
-                  TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
-        """, params)
-        row = cursor.fetchone()
-        if row and row[0] and row[0] > 0:
-            columns = [col[0].lower() for col in cursor.description]
-            return dict(zip(columns, row))
-
-        # Fallback: DUTY_ROSTER
-        try:
-            cursor.execute("""
+            WITH r AS (
                 SELECT
-                    COUNT(*)                                                             AS total_days,
-                    SUM(CASE WHEN IN_TIME IS NOT NULL
-                                  AND OUT_TIME IS NOT NULL THEN 1 ELSE 0 END)           AS present,
-                    SUM(CASE WHEN IN_TIME IS NOT NULL
-                                  AND OUT_TIME IS NULL THEN 1 ELSE 0 END)               AS incomplete,
-                    0                                                                    AS total_minutes,
-                    0                                                                    AS late_minutes,
-                    0                                                                    AS overtime_minutes,
-                    0                                                                    AS absent_days
-                FROM DUTY_ROSTER
+                    CASE WHEN IN_TIME  IS NOT NULL AND TRIM(IN_TIME)  <> ':'
+                         THEN 1 ELSE 0 END                          AS has_in,
+                    CASE WHEN OUT_TIME IS NOT NULL AND TRIM(OUT_TIME) <> ':'
+                         THEN 1 ELSE 0 END                          AS has_out,
+                    NVL(ABSENT, 0)                                  AS absent,
+                    CASE WHEN UPPER(NVL(MORNING_LATE, ' ')) = 'Y'
+                           OR UPPER(NVL(EARLY_OUT_LATE, ' ')) = 'Y'
+                         THEN 1 ELSE 0 END                          AS is_late,
+                    CASE WHEN NVL(MORNING_HALF_DAY, 0) > 0
+                           OR NVL(EAR_OUT_HALF_DAY, 0) > 0
+                         THEN 1 ELSE 0 END                          AS is_half
+                FROM TMS_DUTY_ROSTER_V
                 WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
                   AND TRUNC(ROSTER_DATE) BETWEEN
                       TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
-            """, params)
-            row = cursor.fetchone()
-            if not row:
-                return {}
-            columns = [col[0].lower() for col in cursor.description]
-            return dict(zip(columns, row))
-        except Exception as dr_err:
-            print(f"[ATTENDANCE_SUMMARY] DUTY_ROSTER fallback failed: {dr_err}")
+            )
+            SELECT
+                COUNT(*)                                                     AS total_days,
+                SUM(CASE WHEN has_in = 1 OR has_out = 1 THEN 1 ELSE 0 END)   AS present,
+                SUM(CASE WHEN has_in = 1 AND has_out = 0 THEN 1 ELSE 0 END)  AS incomplete,
+                0                                                            AS total_minutes,
+                0                                                            AS late_minutes,
+                0                                                            AS overtime_minutes,
+                SUM(CASE WHEN absent = 1 AND has_in = 0 AND has_out = 0
+                         THEN 1 ELSE 0 END)                                  AS absent_days,
+                SUM(is_late)                                                 AS late_days,
+                SUM(is_half)                                                 AS half_days
+            FROM r
+        """, {"card": card_no, "card_int": card_int, "from_d": from_date, "to_d": to_date})
+        row = cursor.fetchone()
+        if not row:
             return {}
+        columns = [col[0].lower() for col in cursor.description]
+        return dict(zip(columns, row))
 
     except Exception as e:
-        err = str(e)
-        if "ORA-00942" in err:
+        if "ORA-00942" in str(e):
             return {}
         raise
     finally:

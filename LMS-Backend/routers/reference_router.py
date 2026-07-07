@@ -205,10 +205,8 @@ class ShiftRequest(BaseModel):
     late_end_tm: Optional[str] = None
     half_day_tm: Optional[str] = None
     half_day_end_tm: Optional[str] = None
-    sat_start_tm: Optional[str] = None
-    sat_end_time: Optional[str] = None
+    
     sat_allow_in_tm: Optional[str] = None
-    sat_haf_day_tm: Optional[str] = None
     late_sit_tm: Optional[str] = None
     late_sit_allow_tm: Optional[str] = None
     early_out_late_start: Optional[str] = None

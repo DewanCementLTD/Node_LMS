@@ -198,7 +198,7 @@ export const getLocationHistory = async (card_no, date) => {
         LATITUDE,
         LONGITUDE,
         ACCURACY,
-        RECORDED_AT
+        TO_CHAR(RECORDED_AT, 'YYYY-MM-DD HH24:MI:SS') AS RECORDED_AT
       FROM LOCATION_TRACKS
       WHERE (
         TO_CHAR(CARD_NO) = :card
@@ -220,12 +220,19 @@ export const getLocationHistory = async (card_no, date) => {
       },
     );
 
-    return (result.rows ?? []).map((row) => ({
+    const res = (result.rows ?? []).map((row) => ({
       latitude: row.LATITUDE != null ? Number(row.LATITUDE) : null,
       longitude: row.LONGITUDE != null ? Number(row.LONGITUDE) : null,
       accuracy: Number(row.ACCURACY ?? 0),
       recorded_at: row.RECORDED_AT ? row.RECORDED_AT.toString() : null,
     }));
+    return {
+    
+      "card_no": card,
+      "date": date,
+      "points": res,
+      
+    };
   } finally {
     await connection?.close();
   }

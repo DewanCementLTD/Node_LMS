@@ -99,6 +99,9 @@ Content-Type: application/json
 ### Leave balances
 GET {{baseUrl}}/auth/leave-balances/{{empCard}}
 
+### Leave types (full LOV merged with balances)
+GET {{baseUrl}}/auth/leave-types/{{empCard}}
+
 ### Leave status (application history)
 GET {{baseUrl}}/auth/leave-status/{{empCard}}
 

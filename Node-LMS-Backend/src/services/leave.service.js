@@ -1,5 +1,85 @@
 import { getDirectConnection } from '../config/database.js';
 
+const OUT_ARRAY = 4001; // oracledb.OUT_FORMAT_ARRAY
+
+// ---------------------------------------------------------------------------
+// Leave-type helpers — faithful ports of the FastAPI LMS-Backend
+// (repositories/user_repository.py): _is_od_type, _leave_types_meta, _type_matches.
+// The LEAVE_TYPES schema varies between installs, so columns are detected by name
+// at runtime exactly like the Python side.
+// ---------------------------------------------------------------------------
+
+// Mirrors _is_od_type: true when a leave description/code denotes "On Duty".
+const isOdType = (desc) => {
+  const d = String(desc ?? '').toUpperCase().trim();
+  return (
+    d === 'OD' ||
+    d.startsWith('OD ') ||
+    d.endsWith(' OD') ||
+    d.includes('- OD') ||
+    d.includes('ON DUTY') ||
+    d.includes('OFFICIAL DUTY') ||
+    d.includes('OUT DOOR') ||
+    d.includes('OUTDOOR')
+  );
+};
+
+// Mirrors _leave_types_meta: read LEAVE_TYPES with dynamically-detected columns.
+// Returns [{ pk, code, desc, entitlement, is_od }]. Uses the same open connection.
+const leaveTypesMeta = async (connection) => {
+  let cols;
+  let rows;
+  try {
+    const r = await connection.execute('SELECT * FROM LEAVE_TYPES', {}, { outFormat: OUT_ARRAY });
+    cols = (r.metaData ?? []).map((m) => String(m.name).toUpperCase());
+    rows = r.rows ?? [];
+  } catch (e) {
+    console.log(`[LEAVE_TYPES] read failed: ${e.message ?? e}`);
+    return [];
+  }
+
+  // Return the first column index whose name satisfies any predicate, in order.
+  const find = (...preds) => {
+    for (const p of preds) {
+      for (let i = 0; i < cols.length; i++) {
+        if (p(cols[i])) return i;
+      }
+    }
+    return null;
+  };
+
+  const pkI = find((c) => c === 'LEAVE_TYPE_PK', (c) => c.endsWith('_PK'));
+  const descI = find((c) => c.includes('DESC'));
+  const codeI = find(
+    (c) => ['LEAVE_CD', 'LEAVE_CODE', 'TYPE_CD', 'LEAVE_TYPE_CD', 'CODE', 'SHORT_CD'].includes(c),
+    (c) => (c.endsWith('CD') || c.includes('CODE')) && !c.endsWith('_PK'),
+  );
+  const entI = find(
+    (c) => c.includes('ENTITLE'),
+    (c) => c.includes('ALLOW') && c.includes('DAY'),
+    (c) => ['NO_OF_DAYS', 'DAYS', 'MAX_DAYS', 'TOTAL_DAYS', 'LEAVE_DAYS'].includes(c),
+  );
+
+  return rows.map((r) => {
+    const pk = pkI !== null ? r[pkI] : null;
+    const desc = descI !== null ? String(r[descI] ?? '').trim() : '';
+    const code = codeI !== null && r[codeI] !== null && r[codeI] !== undefined ? String(r[codeI]).trim() : null;
+    const entitlement = entI !== null ? r[entI] : null;
+    return { pk, code, desc, entitlement, is_od: isOdType(desc) || isOdType(code ?? '') };
+  });
+};
+
+// Mirrors _type_matches: true if a LEAVE_TYPES meta row matches a value that may
+// be the code ('ML'), the numeric PK, or the description.
+const typeMatches = (t, value) => {
+  const v = String(value ?? '').trim().toUpperCase();
+  if (!v) return false;
+  if (t.code && t.code.toUpperCase() === v) return true;
+  if (t.pk !== null && t.pk !== undefined && String(t.pk).trim().toUpperCase() === v) return true;
+  if (t.desc && t.desc.toUpperCase() === v) return true;
+  return false;
+};
+
 export const getLeaveBalancesData = async (card_no) => {
   let connection;
   try {
@@ -19,6 +99,75 @@ export const getLeaveBalancesData = async (card_no) => {
   }
 };
 
+// Mirrors `get_leave_types` in the FastAPI LMS-Backend (repositories/user_repository.py):
+// the full LEAVE_TYPES LOV merged with balances from ALL_LEAVE_BAL_V. OD types get
+// is_od=true (no balance restriction); types missing from the view fall back to
+// their LEAVE_TYPES entitlement. If LEAVE_TYPES can't be read, uses the view rows.
+export const getLeaveTypesData = async (card_no) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+
+    // Balances: rows of [leave_type, leave_desc, balance]
+    let balances = [];
+    try {
+      const r = await connection.execute(
+        `SELECT leave_type, leave_desc, balance
+         FROM ALL_LEAVE_BAL_V WHERE card_no = :card`,
+        { card: card_no },
+        { outFormat: OUT_ARRAY },
+      );
+      balances = r.rows ?? [];
+    } catch (e) {
+      console.log(`[LEAVE_TYPES] ALL_LEAVE_BAL_V query failed: ${e.message ?? e}`);
+    }
+
+    // Only the LEAVE_TYPES LOV is offered for applying — extra ALL_LEAVE_BAL_V
+    // rows (ABSENT, SPECIAL LEAVE, ...) are informational and must not appear here.
+    const types = await leaveTypesMeta(connection);
+    const result = [];
+
+    for (const t of types) {
+      let bal = null;
+      for (const b of balances) {
+        // b[0] = leave_type, b[1] = leave_desc, b[2] = balance
+        if (
+          typeMatches(t, b[0]) ||
+          (t.desc && String(b[1] ?? '').trim().toUpperCase() === t.desc.toUpperCase())
+        ) {
+          bal = b[2];
+          break;
+        }
+      }
+      if (bal === null && t.entitlement !== null && t.entitlement !== undefined) {
+        bal = t.entitlement;
+      }
+      result.push({
+        leave_type: t.code || t.pk, // '||' mirrors Python's `t["code"] or t["pk"]`
+        leave_desc: t.desc,
+        balance: bal,
+        is_od: t.is_od,
+      });
+    }
+
+    // Fallback: if LEAVE_TYPES couldn't be read at all, use the view rows.
+    if (!result.length) {
+      for (const b of balances) {
+        result.push({
+          leave_type: b[0],
+          leave_desc: b[1],
+          balance: b[2],
+          is_od: isOdType(String(b[1] ?? '')) || isOdType(String(b[0] ?? '')),
+        });
+      }
+    }
+
+    return result;
+  } finally {
+    await connection?.close();
+  }
+};
+
 // Mirrors `get_leave_status` in the FastAPI LMS-Backend (repositories/user_repository.py):
 // LEAVE_APPLICATION.EMP_FK holds the card_no directly (no EMPLOYEE join).
 export const getLeaveStatusData = async (card_no) => {
@@ -29,6 +178,8 @@ export const getLeaveStatusData = async (card_no) => {
       SELECT
         ENTRY_DATE      AS "entry_date",
         LEAVE_TYPE_FK   AS "leave_type",
+        LEAVE_DAYS      AS "leave_days",
+        REASON           AS "reason",
         LEAVE_DATE_FROM AS "from_date",
         LEAVE_DATE_TO   AS "to_date",
         APPROVAL_STATUS AS "status"

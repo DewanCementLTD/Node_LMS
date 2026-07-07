@@ -11,8 +11,8 @@ export const applyLeaveSchema = z.object({
     to_date: z.string().min(1, 'to_date is required'),
     reason: z.string().min(1, 'reason is required'),
     half_day: z.boolean().optional(),
-    compc: z.number().int().optional(),
-    brnch: z.number().int().optional(),
+    compc: z.number().int().min(1, 'compc is required'),
+    brnch: z.number().int().min(1, 'brnch is required'),
     emp_name: z.string().optional(),
   }),
 });

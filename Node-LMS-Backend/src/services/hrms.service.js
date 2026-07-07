@@ -14,8 +14,8 @@ import {
   empFilterAttempts,
   rosterCardFilter,
   empDirectFilter,
-  toInt,
 } from "../utils/hrmsFilters.js";
+import { cleanHHMM, rosterStatus } from "../utils/rosterStatus.js";
 
 const OUT_OBJECT = 4002; // oracledb.OUT_FORMAT_OBJECT
 const OUT_ARRAY = 4001; // oracledb.OUT_FORMAT_ARRAY
@@ -576,8 +576,8 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
             COUNT(*) AS total,
             SUM(CASE WHEN d.IN_TIME IS NOT NULL OR ar.card_no IS NOT NULL THEN 1 ELSE 0 END) AS present
         FROM HR_EMP_MASTER h
-        LEFT JOIN (SELECT DEPT_NO, MIN(DEPT_NAME) AS DEPT_NAME FROM HR_DEPT GROUP BY DEPT_NO) dep
-            ON dep.DEPT_NO = h.DEPT_NO
+        LEFT JOIN HR_DEPT dep
+            ON TO_CHAR(dep.DEPT_NO) = TO_CHAR(h.DEPT_NO) AND TO_CHAR(dep.COMPC) = TO_CHAR(h.UNIT_ID)
         LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
         LEFT JOIN DUTY_ROSTER d
             ON TO_CHAR(d.CARD_NO) = TO_CHAR(e.CARD_NO)
@@ -635,7 +635,7 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
             MOD(TO_NUMBER(TO_CHAR(h.DTOFBRTH, 'DDD'))
                 - TO_NUMBER(TO_CHAR(SYSDATE, 'DDD')) + 365, 365) AS days_until
         FROM HR_EMP_MASTER h
-        LEFT JOIN HR_DEPT dep ON dep.DEPT_NO = h.DEPT_NO
+        LEFT JOIN HR_DEPT dep ON TO_CHAR(dep.DEPT_NO) = TO_CHAR(h.DEPT_NO) AND TO_CHAR(dep.COMPC) = TO_CHAR(h.UNIT_ID)
         WHERE (h.STATUS = 'A' OR h.STATUS IS NULL)
           AND h.DTOFBRTH IS NOT NULL
           AND MOD(TO_NUMBER(TO_CHAR(h.DTOFBRTH, 'DDD'))
@@ -658,7 +658,7 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
             MOD(TO_NUMBER(TO_CHAR(h.DTOFAPPT, 'DDD'))
                 - TO_NUMBER(TO_CHAR(SYSDATE, 'DDD')) + 365, 365) AS days_until
         FROM HR_EMP_MASTER h
-        LEFT JOIN HR_DEPT dep ON dep.DEPT_NO = h.DEPT_NO
+        LEFT JOIN HR_DEPT dep ON TO_CHAR(dep.DEPT_NO) = TO_CHAR(h.DEPT_NO) AND TO_CHAR(dep.COMPC) = TO_CHAR(h.UNIT_ID)
         WHERE (h.STATUS = 'A' OR h.STATUS IS NULL)
           AND h.DTOFAPPT IS NOT NULL
           AND MOD(TO_NUMBER(TO_CHAR(h.DTOFAPPT, 'DDD'))
@@ -684,7 +684,7 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
         FROM LEAVE_APPLICATION la
         LEFT JOIN EMPLOYEE e ON TO_CHAR(e.CARD_NO) = TO_CHAR(la.EMP_FK)
         LEFT JOIN HR_EMP_MASTER h ON h.EMPCODE = e.EMPCODE
-        LEFT JOIN HR_DEPT dep ON dep.DEPT_NO = h.DEPT_NO
+        LEFT JOIN HR_DEPT dep ON TO_CHAR(dep.DEPT_NO) = TO_CHAR(h.DEPT_NO) AND TO_CHAR(dep.COMPC) = TO_CHAR(h.UNIT_ID)
         WHERE la.LEAVE_DATE_FROM >= TRUNC(SYSDATE)
           AND la.LEAVE_DATE_FROM <= TRUNC(SYSDATE) + 30
         ORDER BY la.LEAVE_DATE_FROM`, {}, { outFormat: OUT_ARRAY });
@@ -944,6 +944,11 @@ export const getHrAnalytics = async (qdate = null, compc = null, brnch = null) =
 
 // ==================================================================
 // BULK ATTENDANCE SUMMARY — per-employee aggregated stats for HR
+// Mirrors get_bulk_attendance_summary in the FastAPI LMS-Backend
+// (repositories/hrms_repository.py): aggregates the ERP duty-roster view
+// (TMS_DUTY_ROSTER_V) per employee. LEFT JOIN keeps every active employee even
+// with no roster rows. Present = any punch on the day; Absent = flagged absent
+// with no punch; Late / Half-Day are counted straight from the ERP flags.
 // ==================================================================
 
 export const getBulkAttendanceSummary = async (fromDate, toDate, allowedCompanies = null, allowedBranches = null) => {
@@ -953,7 +958,6 @@ export const getBulkAttendanceSummary = async (fromDate, toDate, allowedCompanie
     const params = { from_d: fromDate, to_d: toDate };
     const { sql: filterSql } = empDirectFilter(allowedCompanies, allowedBranches, params);
 
-    // Attempt 1: ATTENDANCE_RECORDS + EMPLOYEE (the app's attendance store).
     try {
       const r = await connection.execute(`
         SELECT
@@ -965,33 +969,44 @@ export const getBulkAttendanceSummary = async (fromDate, toDate, allowedCompanie
             h.UNIT_ID,
             h.LOCATION,
             h.STATUS                                          AS emp_status,
-            COUNT(ar.ATTENDANCE_DATE)                         AS total_days,
-            SUM(CASE WHEN ar.ENTRY_TIME IS NOT NULL THEN 1 ELSE 0 END)  AS present_days,
-            0                                                 AS absent_days,
-            0                                                 AS late_minutes,
-            0                                                 AS ot_minutes,
-            SUM(NVL(ar.TIME_SPENT, 0))                        AS working_minutes
+            COUNT(v.ROSTER_DATE)                              AS total_days,
+            SUM(CASE WHEN (v.IN_TIME  IS NOT NULL AND TRIM(v.IN_TIME)  <> ':')
+                       OR (v.OUT_TIME IS NOT NULL AND TRIM(v.OUT_TIME) <> ':')
+                     THEN 1 ELSE 0 END)                        AS present_days,
+            SUM(CASE WHEN NVL(v.ABSENT, 0) = 1
+                      AND (v.IN_TIME  IS NULL OR TRIM(v.IN_TIME)  = ':')
+                      AND (v.OUT_TIME IS NULL OR TRIM(v.OUT_TIME) = ':')
+                     THEN 1 ELSE 0 END)                        AS absent_days,
+            SUM(CASE WHEN UPPER(NVL(v.MORNING_LATE, ' ')) = 'Y'
+                       OR UPPER(NVL(v.EARLY_OUT_LATE, ' ')) = 'Y'
+                     THEN 1 ELSE 0 END)                        AS late_days,
+            SUM(CASE WHEN NVL(v.MORNING_HALF_DAY, 0) > 0
+                       OR NVL(v.EAR_OUT_HALF_DAY, 0) > 0
+                     THEN 1 ELSE 0 END)                        AS half_days,
+            0                                                  AS working_minutes
         FROM HR_EMP_MASTER h
         LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
-        LEFT JOIN ATTENDANCE_RECORDS ar
-            ON  TO_CHAR(ar.CARD_NO) = TO_CHAR(e.CARD_NO)
-            AND TRUNC(ar.ATTENDANCE_DATE) BETWEEN
+        LEFT JOIN TMS_DUTY_ROSTER_V v
+            ON  TO_CHAR(v.CARD_NO) = TO_CHAR(e.CARD_NO)
+            AND TRUNC(v.ROSTER_DATE) BETWEEN
                 TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
-        LEFT JOIN (SELECT DEPT_NO, MIN(DEPT_NAME) AS DEPT_NAME FROM HR_DEPT GROUP BY DEPT_NO) dep
-            ON dep.DEPT_NO = h.DEPT_NO
+        LEFT JOIN HR_DEPT dep
+            ON TO_CHAR(dep.DEPT_NO) = TO_CHAR(h.DEPT_NO) AND TO_CHAR(dep.COMPC) = TO_CHAR(h.UNIT_ID)
         WHERE h.STATUS = 'A'${filterSql}
         GROUP BY
             h.EMPCODE, h.NAME, h."ATDTCARD#", TO_CHAR(e.CARD_NO),
             dep.DEPT_NAME, h.DEPT_NO, h.UNIT_ID, h.LOCATION, h.STATUS
-        ORDER BY h.NAME`, params, { outFormat: OUT_OBJECT });
+        ORDER BY h.NAME
+        FETCH FIRST 2000 ROWS ONLY`, params, { outFormat: OUT_OBJECT });
       const result = (r.rows ?? []).map(lowerKeys);
       for (const rec of result) {
         if (rec.card_no === null || rec.card_no === undefined) rec.card_no = rec.atdtcard;
       }
       return result;
     } catch (err) {
-      console.log(`[BULK_ATT] ATTENDANCE_RECORDS attempt failed: ${err.message}`);
-      if (!String(err.message).includes("ORA-00942") && !String(err.message).includes("ORA-01427")) throw err;
+      const msg = String(err.message);
+      console.log(`[BULK_ATT] TMS_DUTY_ROSTER_V attempt failed: ${msg}`);
+      if (!msg.includes("ORA-00942") && !msg.includes("ORA-01427") && !msg.includes("ORA-00904")) throw err;
     }
 
     // Fallback: employee list only, zero attendance counts
@@ -1008,14 +1023,15 @@ export const getBulkAttendanceSummary = async (fromDate, toDate, allowedCompanie
           0 AS total_days,
           0 AS present_days,
           0 AS absent_days,
-          0 AS late_minutes,
-          0 AS ot_minutes,
+          0 AS late_days,
+          0 AS half_days,
           0 AS working_minutes
       FROM HR_EMP_MASTER h
-      LEFT JOIN (SELECT DEPT_NO, MIN(DEPT_NAME) AS DEPT_NAME FROM HR_DEPT GROUP BY DEPT_NO) dep
-          ON dep.DEPT_NO = h.DEPT_NO
+      LEFT JOIN HR_DEPT dep
+          ON TO_CHAR(dep.DEPT_NO) = TO_CHAR(h.DEPT_NO) AND TO_CHAR(dep.COMPC) = TO_CHAR(h.UNIT_ID)
       WHERE h.STATUS = 'A'${filterSql}
-      ORDER BY h.NAME`, params, { outFormat: OUT_OBJECT });
+      ORDER BY h.NAME
+      FETCH FIRST 2000 ROWS ONLY`, params, { outFormat: OUT_OBJECT });
     return (r.rows ?? []).map(lowerKeys);
   } finally {
     await connection?.close();
@@ -1033,192 +1049,58 @@ export const getBulkAttendanceDetails = async (fromDate, toDate, allowedCompanie
     const params = { from_d: fromDate, to_d: toDate };
     const { sql: filterSql } = empDirectFilter(allowedCompanies, allowedBranches, params);
 
-    const fmtTime = (v) => {
-      if (v === null || v === undefined) return null;
-      if (v instanceof Date) return `${v.getHours()}:${String(v.getMinutes()).padStart(2, "0")}`;
-      const s = String(v).trim();
-      if (!s) return null;
-      const parts = s.split(":");
-      if (parts.length >= 2) {
-        const h = parseInt(parts[0], 10);
-        if (Number.isFinite(h)) return `${h}:${parts[1].padStart(2, "0").slice(0, 2)}`;
-        return s;
-      }
-      return s;
-    };
-
-    const process = (rows) =>
-      rows.map((raw) => {
-        const rec = lowerKeys(raw);
-        rec.roster_date = fmtYmd(rec.roster_date) || null;
-        rec.in_time = fmtTime(rec.in_time);
-        rec.out_time = fmtTime(rec.out_time);
-        rec.duty_in = fmtTime(rec.duty_in);
-        rec.duty_out = fmtTime(rec.duty_out);
-        return rec;
-      });
-
-    // Run a query; on handled Oracle errors OR (optionally) 0 rows, return null.
-    const run = async (sql, bind, label, requireRows = true) => {
-      try {
-        const r = await connection.execute(sql, bind, { outFormat: OUT_OBJECT });
-        const rows = r.rows ?? [];
-        if (requireRows && !rows.length) {
-          console.log(`[BULK_DET] ${label}: 0 rows, trying next`);
-          return null;
-        }
-        return rows;
-      } catch (exc) {
-        const msg = String(exc.message);
-        console.log(`[BULK_DET] ${label}: ${msg}`);
-        if (["ORA-00904", "ORA-00942", "ORA-01427", "DPY-4008"].some((x) => msg.includes(x))) return null;
-        throw exc;
-      }
-    };
-
-    // Attempt 0: ATTENDANCE_RECORDS + EMPLOYEE (primary source)
-    let rows = await run(`
+    // Source: TMS_DUTY_ROSTER_V — the ERP duty-roster view, one row per
+    // employee per rostered day carrying the late / half-day / absent flags
+    // the app cannot derive itself. Mirrors FastAPI's get_bulk_attendance_details
+    // (repositories/hrms_repository.py) so both backends return identical rows.
+    const r = await connection.execute(`
       SELECT
-          NVL(h."ATDTCARD#", TO_CHAR(e.CARD_NO))  AS atdtcard,
-          TO_CHAR(e.CARD_NO)                       AS card_no,
+          NVL(h."ATDTCARD#", TO_CHAR(v.CARD_NO))  AS atdtcard,
+          TO_CHAR(v.CARD_NO)                       AS card_no,
           h.NAME                                   AS name,
-          ar.ATTENDANCE_DATE                       AS roster_date,
-          NULL                                     AS duty_in,
-          NULL                                     AS duty_out,
-          ar.ENTRY_TIME                            AS in_time,
-          ar.EXIT_TIME                             AS out_time
-      FROM HR_EMP_MASTER h
-      LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
-      JOIN ATTENDANCE_RECORDS ar
-          ON  TO_CHAR(ar.CARD_NO) = TO_CHAR(e.CARD_NO)
-          AND TRUNC(ar.ATTENDANCE_DATE) BETWEEN
-              TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
-      WHERE h.STATUS = 'A'${filterSql}
-      ORDER BY NVL(h."ATDTCARD#", TO_CHAR(ar.CARD_NO)), ar.ATTENDANCE_DATE`,
-      params, "Attempt 0 (ATTENDANCE_RECORDS + EMPLOYEE)");
-    if (rows) return process(rows);
+          v.ROSTER_DATE                            AS roster_date,
+          v.DAY_NAME                               AS day_name,
+          v.SHIFT_START_TIME                       AS duty_in,
+          v.IN_TIME                                AS in_time,
+          v.OUT_TIME                               AS out_time,
+          v.ABSENT                                 AS absent,
+          v.MORNING_LATE                           AS morning_late,
+          v.EARLY_OUT_LATE                         AS early_out_late,
+          v.MORNING_HALF_DAY                       AS morning_half_day,
+          v.EAR_OUT_HALF_DAY                       AS ear_out_half_day
+      FROM TMS_DUTY_ROSTER_V v
+      JOIN EMPLOYEE e      ON TO_CHAR(e.CARD_NO) = TO_CHAR(v.CARD_NO)
+      JOIN HR_EMP_MASTER h ON h.EMPCODE = e.EMPCODE
+      WHERE h.STATUS = 'A'
+        AND TRUNC(v.ROSTER_DATE) BETWEEN
+            TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
+        ${filterSql}
+      ORDER BY h.NAME, v.ROSTER_DATE
+      FETCH FIRST 30000 ROWS ONLY`,
+      params, { outFormat: OUT_OBJECT });
 
-    // Attempt 1: DUTY_ROSTER full columns (SHIFT_START/END) + EMPLOYEE join
-    rows = await run(`
-      SELECT
-          NVL(h."ATDTCARD#", TO_CHAR(e.CARD_NO))  AS atdtcard,
-          TO_CHAR(e.CARD_NO)                       AS card_no,
-          h.NAME                                   AS name,
-          d.ROSTER_DATE                            AS roster_date,
-          d.SHIFT_START_TIME                       AS duty_in,
-          d.SHIFT_END_TIME                         AS duty_out,
-          d.IN_TIME                                AS in_time,
-          d.OUT_TIME                               AS out_time
-      FROM HR_EMP_MASTER h
-      LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
-      JOIN DUTY_ROSTER d
-          ON  TO_CHAR(d.CARD_NO) = TO_CHAR(e.CARD_NO)
-          AND TRUNC(d.ROSTER_DATE) BETWEEN
-              TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
-      WHERE h.STATUS = 'A'${filterSql}
-      ORDER BY NVL(h."ATDTCARD#", TO_CHAR(d.CARD_NO)), d.ROSTER_DATE`,
-      params, "Attempt 1 (SHIFT_START/END + EMPLOYEE)");
-    if (rows) return process(rows);
-
-    // Attempt 2: no DUTY_IN/DUTY_OUT, still SHIFT + EMPLOYEE
-    rows = await run(`
-      SELECT
-          NVL(h."ATDTCARD#", TO_CHAR(e.CARD_NO))  AS atdtcard,
-          TO_CHAR(e.CARD_NO)                       AS card_no,
-          h.NAME                                   AS name,
-          d.ROSTER_DATE                            AS roster_date,
-          NULL                                     AS duty_in,
-          NULL                                     AS duty_out,
-          d.IN_TIME                                AS in_time,
-          d.OUT_TIME                               AS out_time
-      FROM HR_EMP_MASTER h
-      LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
-      JOIN DUTY_ROSTER d
-          ON  TO_CHAR(d.CARD_NO) = TO_CHAR(e.CARD_NO)
-          AND TRUNC(d.ROSTER_DATE) BETWEEN
-              TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
-      WHERE h.STATUS = 'A'${filterSql}
-      ORDER BY NVL(h."ATDTCARD#", TO_CHAR(d.CARD_NO)), d.ROSTER_DATE`,
-      params, "Attempt 2 (SHIFT + EMPLOYEE)");
-    if (rows) return process(rows);
-
-    // Attempt 3: DUTY_ROSTER INNER JOIN HR_EMP_MASTER via ATDTCARD#
-    rows = await run(`
-      SELECT
-          TO_CHAR(d.CARD_NO)                       AS atdtcard,
-          TO_CHAR(d.CARD_NO)                       AS card_no,
-          h.NAME                                   AS name,
-          d.ROSTER_DATE                            AS roster_date,
-          NULL                                     AS duty_in,
-          NULL                                     AS duty_out,
-          d.IN_TIME                                AS in_time,
-          d.OUT_TIME                               AS out_time
-      FROM DUTY_ROSTER d
-      JOIN HR_EMP_MASTER h
-          ON  TO_CHAR(d.CARD_NO) = TO_CHAR(h."ATDTCARD#")
-      WHERE TRUNC(d.ROSTER_DATE) BETWEEN
-              TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
-          AND h.STATUS = 'A'${filterSql}
-      ORDER BY TO_CHAR(d.CARD_NO), d.ROSTER_DATE`,
-      params, "Attempt 3 (DUTY_ROSTER INNER JOIN HR_EMP_MASTER via ATDTCARD#)");
-    if (rows) return process(rows);
-
-    // Attempt 4: INNER JOIN via ATDTCARD# — company filter moved into ON clause
-    // (uses j-suffix binds so the bind set matches the SQL text, avoiding DPY-4008).
-    const joinParams = { from_d: fromDate, to_d: toDate };
-    const joinParts = [];
-    const compNums = (allowedCompanies ?? []).map(toInt).filter((n) => n !== null);
-    const brnNums = (allowedBranches ?? []).map(toInt).filter((n) => n !== null);
-    if (compNums.length) {
-      const ph = compNums.map((_, i) => `:cmpj${i}`).join(", ");
-      joinParts.push(`TO_NUMBER(h.UNIT_ID) IN (${ph})`);
-      compNums.forEach((n, i) => { joinParams[`cmpj${i}`] = n; });
-    }
-    if (brnNums.length) {
-      const ph = brnNums.map((_, i) => `:brnj${i}`).join(", ");
-      joinParts.push(`TO_NUMBER(h.LOCATION) IN (${ph})`);
-      brnNums.forEach((n, i) => { joinParams[`brnj${i}`] = n; });
-    }
-    const joinOnExtra = joinParts.length ? ` AND ${joinParts.join(" AND ")}` : "";
-
-    rows = await run(`
-      SELECT
-          NVL(h."ATDTCARD#", TO_CHAR(d.CARD_NO))  AS atdtcard,
-          NVL(h."ATDTCARD#", TO_CHAR(d.CARD_NO))  AS card_no,
-          h.NAME                                   AS name,
-          d.ROSTER_DATE                            AS roster_date,
-          NULL                                     AS duty_in,
-          NULL                                     AS duty_out,
-          d.IN_TIME                                AS in_time,
-          d.OUT_TIME                               AS out_time
-      FROM DUTY_ROSTER d
-      JOIN HR_EMP_MASTER h
-          ON  TO_CHAR(d.CARD_NO) = TO_CHAR(h."ATDTCARD#")${joinOnExtra}
-      WHERE TRUNC(d.ROSTER_DATE) BETWEEN
-          TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
-      ORDER BY d.CARD_NO, d.ROSTER_DATE`,
-      joinParams, "Attempt 4 (ATDTCARD# INNER JOIN)");
-    if (rows) return process(rows);
-
-    // Attempt 5: INNER JOIN + hard company filter in WHERE (final fallback)
-    rows = await run(`
-      SELECT
-          TO_CHAR(d.CARD_NO)  AS atdtcard,
-          TO_CHAR(d.CARD_NO)  AS card_no,
-          h.NAME              AS name,
-          d.ROSTER_DATE       AS roster_date,
-          NULL                AS duty_in,
-          NULL                AS duty_out,
-          d.IN_TIME           AS in_time,
-          d.OUT_TIME          AS out_time
-      FROM DUTY_ROSTER d
-      INNER JOIN HR_EMP_MASTER h
-          ON  TO_CHAR(d.CARD_NO) = TO_CHAR(h."ATDTCARD#")
-      WHERE TRUNC(d.ROSTER_DATE) >= TO_DATE(:from_d, 'YYYY-MM-DD')
-        AND TRUNC(d.ROSTER_DATE) <= TO_DATE(:to_d, 'YYYY-MM-DD')${filterSql}
-      ORDER BY d.CARD_NO, d.ROSTER_DATE`,
-      params, "Attempt 5 (INNER JOIN + company filter)", false);
-    return process(rows ?? []);
+    return (r.rows ?? []).map((raw) => {
+      const rec = lowerKeys(raw);
+      const inTime = cleanHHMM(rec.in_time);
+      const outTime = cleanHHMM(rec.out_time);
+      const half = (rec.morning_half_day || 0) + (rec.ear_out_half_day || 0);
+      const status = rosterStatus(inTime, outTime, rec.absent, rec.morning_late, rec.early_out_late, half);
+      rec.roster_date = fmtYmd(rec.roster_date) || null;
+      rec.in_time = inTime;
+      rec.out_time = outTime;
+      rec.duty_in = cleanHHMM(rec.duty_in);
+      rec.duty_out = null;
+      rec.status = status;
+      rec.is_late = status === "Late";
+      rec.is_absent = status === "Absent";
+      rec.is_half_day = status === "Half Day";
+      delete rec.absent;
+      delete rec.morning_late;
+      delete rec.early_out_late;
+      delete rec.morning_half_day;
+      delete rec.ear_out_half_day;
+      return rec;
+    });
   } finally {
     await connection?.close();
   }

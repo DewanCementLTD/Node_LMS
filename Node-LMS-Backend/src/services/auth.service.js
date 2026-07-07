@@ -45,7 +45,7 @@ const getEmployeeFlags = async (card_no) => {
       const r = await connection.execute(
         `SELECT e.EMP_NAME AS "emp_name", NVL(h.HR_ADMIN, 'N') AS "hr_admin", h.EMPCODE AS "empcode"
          FROM EMPLOYEE e
-         LEFT JOIN HR_EMP_MASTER h ON h.EMPCODE = e.EMP_NO
+         LEFT JOIN HR_EMP_MASTER h ON h.EMPCODE = e.EMPCODE
          WHERE TO_CHAR(e.CARD_NO) = :card`,
         { card: card_no },
         OBJ
@@ -175,7 +175,7 @@ const authenticateStep = async (username, password) => {
         const r = await connection.execute(
           `SELECT TO_CHAR(e.CARD_NO) AS "card_no", h.NAME AS "name", h.EMPCODE AS "empcode"
            FROM HR_EMP_MASTER h
-           LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+           LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
            WHERE h.EMPCODE = :ec`,
           { ec: empcode },
           OBJ
@@ -194,7 +194,7 @@ const authenticateStep = async (username, password) => {
         const r = await connection.execute(
           `SELECT TO_CHAR(e.CARD_NO) AS "card_no", h.NAME AS "name", h.EMPCODE AS "empcode"
            FROM HR_EMP_MASTER h
-           LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+           LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
            WHERE h."MOBILE#" IN (:mv1, :mv2, :mv3)`,
           { mv1: mv, mv2: mvW, mv3: mvNo0 },
           OBJ
@@ -277,7 +277,7 @@ const authenticateStep = async (username, password) => {
         `SELECT TO_CHAR(e.CARD_NO) AS "card_no", e.USER_PASWD AS "user_paswd", h.NAME AS "name",
                 h.EMPCODE AS "empcode", h."ATDTCARD#" AS "atdtcard"
          FROM HR_EMP_MASTER h
-         LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+         LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
          WHERE h."MOBILE#" IN (:l1, :l2, :l3)
             OR h."ATDTCARD#" = :l4 OR h.EMPCODE = :l5`,
         { l1: l, l2: lW0, l3: lNo0, l4: l, l5: l },
@@ -356,7 +356,6 @@ const authenticateStep = async (username, password) => {
 export const authenticateUser = async (username, password) => {
   const user = await authenticateStep(username, password);
   if (!user) return null;
-
   if (user.card_no) {
     try {
       const flags = await getEmployeeFlags(user.card_no);
@@ -428,7 +427,7 @@ export const lookupByPhone = async (phone) => {
       const r = await connection.execute(
         `SELECT TO_CHAR(e.CARD_NO) AS "card_no", h.NAME AS "name", h.EMPCODE AS "empcode", h."ATDTCARD#" AS "atdtcard"
          FROM HR_EMP_MASTER h
-         LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+         LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
          WHERE h."MOBILE#" = :login
             OR h."MOBILE#" = '0' || :login
             OR h."ATDTCARD#" = :login
@@ -485,7 +484,7 @@ const getUserByLogin = async (login) => {
         `SELECT TO_CHAR(e.CARD_NO) AS "card_no", e.USER_PASWD AS "user_paswd", h.NAME AS "name",
                 NVL(h.HR_ADMIN, 'N') AS "hr_admin", h.EMPCODE AS "empcode", h."ATDTCARD#" AS "atdtcard"
          FROM HR_EMP_MASTER h
-         LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+         LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
          WHERE h."MOBILE#" = :login
             OR h."MOBILE#" = '0' || :login
             OR h."ATDTCARD#" = :login

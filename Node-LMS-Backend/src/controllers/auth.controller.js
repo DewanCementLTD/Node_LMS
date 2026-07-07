@@ -1,7 +1,6 @@
 import { authenticateUser, getProfile, lookupByPhone, changePassword } from '../services/auth.service.js';
 
 export const login = async (req, res, next) => {
-  console.log('Login result:'); // Debugging line
   try {
     const { username, password } = res.locals.validated.body;
     const result = await authenticateUser(username, password);

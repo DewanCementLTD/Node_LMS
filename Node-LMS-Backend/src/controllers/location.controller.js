@@ -24,8 +24,8 @@ export const locationHistory = async (req, res, next) => {
   try {
     const { card_no } = res.locals.validated.params;
     const { date } = res.locals.validated.query;
-    const items = await getLocationHistory(card_no, date);
-    res.json({ items });
+    const body = await getLocationHistory(card_no, date);
+    res.json({ body });
   } catch (err) {
     next(err);
   }

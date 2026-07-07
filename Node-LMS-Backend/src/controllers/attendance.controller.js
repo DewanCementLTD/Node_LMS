@@ -15,6 +15,7 @@ import {
 import { forceUpdateBlock } from '../services/appVersion.service.js';
 
 // POST /auth/attendance/face
+
 export const faceAttendance = async (req, res, next) => {
   try {
     const body = res.locals.validated.body;
@@ -43,7 +44,6 @@ export const faceAttendance = async (req, res, next) => {
     if (result.status === 'error') {
       return res.status(400).json({ detail: result.message });
     }
-
     return res.json({
       body: {
         attendance_id: '',

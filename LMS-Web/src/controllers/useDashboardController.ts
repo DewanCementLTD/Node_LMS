@@ -76,11 +76,9 @@ export function useDashboardController() {
 
         if (dashData.card_no) {
           const now = new Date();
-          const pad = (n: number) => String(n).padStart(2, "0");
-          const toLocal = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
           const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-          const fromDate = toLocal(firstDay);
-          const toDate = toLocal(now);
+          const fromDate = firstDay.toISOString().split("T")[0];
+          const toDate = now.toISOString().split("T")[0];
           try {
             const summaryData = await fetchAttendanceSummary(
               dashData.card_no,

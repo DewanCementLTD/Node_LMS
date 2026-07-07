@@ -12,7 +12,7 @@ import { z } from "zod";
 // Employee create/update payload (mirrors EmployeeCreateRequest /
 // EmployeeUpdateRequest in the FastAPI models/hrms_models.py).
 const employeeBody = {
-  name: z.string().optional(),
+  name: z.string(),
   fhname: z.string().optional(),
   atdtcard: z.string().optional(),
   sex: z.string().optional(),
@@ -21,12 +21,12 @@ const employeeBody = {
   dtofappt: z.string().optional(),
   dept_no: z.string().optional(),
   desg_cd: z.string().optional(),
-  mobile: z.string().optional(),
+  mobile: z.string().min(10, "At least 10 characters are required for the mobile number"),
   email: z.string().optional(),
   address: z.string().optional(),
-  unit_id: z.number().int().optional(),
+  unit_id: z.number().int().min(0, "must include a valid unit_id"),
   status: z.string().optional(),
-  user_paswd: z.string().optional(),
+  user_paswd: z.string().min(8, "Password must be at least 8 characters long"),
   hr_admin: z.string().optional(),
   rpt_officer: z.string().optional(),
   marstat: z.string().optional(),
@@ -40,7 +40,7 @@ const employeeBody = {
   shift: z.string().optional(),
   w_hour: z.number().optional(),
   bldgrp: z.string().optional(),
-  location: z.string().optional(),
+  location: z.string().min(1, "Location is required"),
   track_location: z.string().optional(),
   track_location_hr: z.number().int().min(1).max(24).optional(),
   emp_status: z.string().optional(),
