@@ -50,7 +50,7 @@ def admin_can_edit_salary(card_no: str) -> bool:
                 TO_CHAR(MOBILE) IN (:c, :c0, :cn)
                 OR ECODE = :c
                 OR ECODE IN (SELECT h.EMPCODE FROM HR_EMP_MASTER h
-                             LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+                             LEFT JOIN EMPLOYEE_F_F e ON e.EMP_NO = h.EMPCODE
                              WHERE h.EMPCODE = :c OR TO_CHAR(e.CARD_NO) = :c)
             )
         """, {"c": c, "c0": c0, "cn": cn})
@@ -66,7 +66,7 @@ def admin_can_edit_salary(card_no: str) -> bool:
 
 
 def get_user_rights(mobile: str, empcode: str = "") -> dict:
-    """Return SEC_USERNAME company/branch rights for the given employee."""
+    """Return SEC_USERNAME company/branch rights for the given EMPLOYEE_F."""
     conn = get_connection()
     cur = conn.cursor()
     try:
@@ -186,38 +186,38 @@ def authenticate_user(username: str, password: str) -> dict | None:
             emp_name = str(descr or "").strip()  # Use DESCR from SEC_USERNAME
             empcode = str(ecode or "").strip()
             card_no = None
-            has_employee_features = False  # Will be set to True only if in HR_EMP_MASTER
+            has_EMPLOYEE_F_features = False  # Will be set to True only if in HR_EMP_MASTER
 
-            # Check if SEC_USERNAME user exists in HR_EMP_MASTER (necessary for employee features)
+            # Check if SEC_USERNAME user exists in HR_EMP_MASTER (necessary for EMPLOYEE_F features)
             # First try by EMPCODE
             if empcode:
                 cur.execute("""
                     SELECT TO_CHAR(e.CARD_NO), h.NAME, h.EMPCODE
                     FROM HR_EMP_MASTER h
-                    LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+                    LEFT JOIN EMPLOYEE_F e ON e.EMP_NO = h.EMPCODE
                     WHERE h.EMPCODE = :ec
                 """, {"ec": empcode})
                 row = cur.fetchone()
                 if row:
                     card_no = str(row[0]) if row[0] else None
                     # Keep emp_name from SEC_USERNAME DESCR, don't override
-                    has_employee_features = True
+                    has_EMPLOYEE_F_features = True
 
             # If not found by EMPCODE, try by mobile in HR_EMP_MASTER
-            if not has_employee_features and sec_mobile:
+            if not has_EMPLOYEE_F_features and sec_mobile:
                 mv = str(sec_mobile).strip()
                 mv_w = ('0' + mv) if not mv.startswith('0') else mv
                 mv_no0 = mv[1:] if mv.startswith('0') else mv
                 cur.execute("""
                     SELECT TO_CHAR(e.CARD_NO), h.NAME, h.EMPCODE
                     FROM HR_EMP_MASTER h
-                    LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+                    LEFT JOIN EMPLOYEE_F e ON e.EMP_NO = h.EMPCODE
                     WHERE h."MOBILE#" IN (:mv1, :mv2, :mv3)
                 """, {"mv1": mv, "mv2": mv_w, "mv3": mv_no0})
                 row = cur.fetchone()
                 if row:
                     card_no = str(row[0]) if row[0] else None
-                    has_employee_features = True
+                    has_EMPLOYEE_F_features = True
                     if not empcode:
                         empcode = str(row[2] or "").strip()
 
@@ -267,7 +267,7 @@ def authenticate_user(username: str, password: str) -> dict | None:
             except Exception as e:
                 print(f"[AUTH] SEC_USERBRCH query failed for USRID={usrid_numeric}: {e}")
 
-            has_self_service = has_employee_features
+            has_self_service = has_EMPLOYEE_F_features
             print(f"[AUTH] SEC_USERNAME login: usrid={usrid_numeric}, card_no={card_no}, "
                   f"has_self_service={has_self_service}, companies={len(companies)}, branches={len(branches)}")
             return {
@@ -283,11 +283,11 @@ def authenticate_user(username: str, password: str) -> dict | None:
                 "branch_list": branch_list,
                 "can_edit_salary": str(ulevl or "").strip().upper() == "M",
                 "has_self_service": has_self_service,
-                "has_employee_features": has_employee_features,  # False if not in HR_EMP_MASTER
+                "has_EMPLOYEE_F_features": has_EMPLOYEE_F_features,  # False if not in HR_EMP_MASTER
             }
 
-        # ── STEP 2: HR_EMP_MASTER (normal employee) ───────────────────
-        # Regular employees can only access their own data, NO HR admin features
+        # ── STEP 2: HR_EMP_MASTER (normal EMPLOYEE_F) ───────────────────
+        # Regular EMPLOYEE_Fs can only access their own data, NO HR admin features
         l     = username.strip()
         l_w0  = ('0' + l) if not l.startswith('0') else l
         l_no0 = l[1:]     if l.startswith('0')     else l
@@ -296,7 +296,7 @@ def authenticate_user(username: str, password: str) -> dict | None:
                 SELECT TO_CHAR(e.CARD_NO), e.USER_PASWD, h.NAME,
                        h.EMPCODE, h."ATDTCARD#"
                 FROM HR_EMP_MASTER h
-                LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+                LEFT JOIN EMPLOYEE_F e ON e.EMP_NO = h.EMPCODE
                 WHERE h."MOBILE#" IN (:l1, :l2, :l3)
                    OR h."ATDTCARD#" = :l4 OR h.EMPCODE = :l5
             """, {"l1": l, "l2": l_w0, "l3": l_no0, "l4": l, "l5": l})
@@ -320,15 +320,15 @@ def authenticate_user(username: str, password: str) -> dict | None:
                     "company_list": [],
                     "branch_list": [],
                     "has_self_service": True,
-                    "has_employee_features": True,  # Can access employee modules
+                    "has_EMPLOYEE_F_features": True,  # Can access EMPLOYEE_F modules
                 }
         except Exception as e:
             print(f"[AUTH] HR_EMP_MASTER query failed: {e}")
 
-        # Fallback: EMPLOYEE table
+        # Fallback: EMPLOYEE_F table
         try:
             cur.execute("""
-                SELECT TO_CHAR(CARD_NO), USER_PASWD FROM EMPLOYEE
+                SELECT TO_CHAR(CARD_NO), USER_PASWD FROM EMPLOYEE_F
                 WHERE TO_CHAR(CARD_NO) = :e1
                    OR TO_CHAR(MOBILE_NO) = :e1
                    OR EMP_NO = :e1
@@ -350,10 +350,10 @@ def authenticate_user(username: str, password: str) -> dict | None:
                     "company_list": [],
                     "branch_list": [],
                     "has_self_service": True,
-                    "has_employee_features": True,
+                    "has_EMPLOYEE_F_features": True,
                 }
         except Exception as e:
-            print(f"[AUTH] EMPLOYEE fallback failed: {e}")
+            print(f"[AUTH] EMPLOYEE_F fallback failed: {e}")
 
         print(f"[AUTH] No match for '{username}'")
         return None
@@ -367,22 +367,22 @@ def authenticate_user(username: str, password: str) -> dict | None:
 # ===============================
 
 def get_user_by_login(login: str):
-    """Find employee by searching HR_EMP_MASTER (has USER_PASWD, HR_ADMIN)
-    and EMPLOYEE tables. HR_EMP_MASTER is the primary source for auth fields.
+    """Find EMPLOYEE_F by searching HR_EMP_MASTER (has USER_PASWD, HR_ADMIN)
+    and EMPLOYEE_F tables. HR_EMP_MASTER is the primary source for auth fields.
     """
     conn = get_connection()
     cursor = conn.cursor()
     try:
         print(f"[LOGIN] Searching for: '{login}'")
 
-        # ---- Try HR_EMP_MASTER + EMPLOYEE join to get real CARD_NO ----
+        # ---- Try HR_EMP_MASTER + EMPLOYEE_F join to get real CARD_NO ----
         try:
             cursor.execute("""
                 SELECT TO_CHAR(e.CARD_NO), e.USER_PASWD, h.NAME,
                        NVL(h.HR_ADMIN, 'N') AS hr_admin, h.EMPCODE,
                        h."ATDTCARD#"
                 FROM HR_EMP_MASTER h
-                LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+                LEFT JOIN EMPLOYEE_F e ON e.EMP_NO = h.EMPCODE
                 WHERE h."MOBILE#" = :login
                    OR h."MOBILE#" = '0' || :login
                    OR h."ATDTCARD#" = :login
@@ -390,7 +390,7 @@ def get_user_by_login(login: str):
             """, {"login": login})
             row = cursor.fetchone()
             if row:
-                # Prefer EMPLOYEE.CARD_NO (row[0]), fallback to ATDTCARD# (row[5])
+                # Prefer EMPLOYEE_F.CARD_NO (row[0]), fallback to ATDTCARD# (row[5])
                 card_no = str(row[0]) if row[0] else (str(row[5]) if row[5] else None)
                 has_pwd = bool(row[1])
                 print(f"[LOGIN] Found in HR_EMP_MASTER: card_no={card_no}, "
@@ -405,12 +405,12 @@ def get_user_by_login(login: str):
         except Exception as e:
             print(f"[LOGIN] HR_EMP_MASTER query failed: {e}")
 
-        # ---- Fallback to EMPLOYEE table ----
+        # ---- Fallback to EMPLOYEE_F table ----
         cursor2 = conn.cursor()
         try:
             cursor2.execute("""
                 SELECT card_no, USER_PASWD
-                FROM EMPLOYEE
+                FROM EMPLOYEE_F
                 WHERE TO_CHAR(MOBILE_NO) = :login
                    OR TO_CHAR(MOBILE_NO) = '0' || :login
                    OR TO_CHAR(CARD_NO) = :login
@@ -421,12 +421,12 @@ def get_user_by_login(login: str):
                 raw = row[0]
                 card_no = str(raw) if raw is not None else None
                 has_pwd = bool(row[1])
-                print(f"[LOGIN] Found in EMPLOYEE: card_no={card_no}, has_password={has_pwd}")
+                print(f"[LOGIN] Found in EMPLOYEE_F: card_no={card_no}, has_password={has_pwd}")
                 return {"card_no": card_no, "user_paswd": row[1]}
         finally:
             cursor2.close()
 
-        print(f"[LOGIN] No employee found for '{login}'")
+        print(f"[LOGIN] No EMPLOYEE_F found for '{login}'")
         return None
 
     finally:
@@ -440,16 +440,16 @@ def get_user_by_phone(phone: str):
 
 
 def lookup_by_phone(phone: str):
-    """Return card_no and employee details for a given phone/empcode/card_no."""
+    """Return card_no and EMPLOYEE_F details for a given phone/empcode/card_no."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        # Try HR_EMP_MASTER + EMPLOYEE join to get real CARD_NO and details
+        # Try HR_EMP_MASTER + EMPLOYEE_F join to get real CARD_NO and details
         try:
             cursor.execute("""
                 SELECT TO_CHAR(e.CARD_NO), h.NAME, h.EMPCODE, h."ATDTCARD#"
                 FROM HR_EMP_MASTER h
-                LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+                LEFT JOIN EMPLOYEE_F e ON e.EMP_NO = h.EMPCODE
                 WHERE h."MOBILE#" = :login
                    OR h."MOBILE#" = '0' || :login
                    OR h."ATDTCARD#" = :login
@@ -463,12 +463,12 @@ def lookup_by_phone(phone: str):
         except Exception as e:
             print(f"[LOOKUP] HR_EMP_MASTER query failed: {e}")
 
-        # Fallback to EMPLOYEE
+        # Fallback to EMPLOYEE_F
         cursor2 = conn.cursor()
         try:
             cursor2.execute("""
                 SELECT TO_CHAR(CARD_NO), EMP_NAME, EMP_NO
-                FROM EMPLOYEE
+                FROM EMPLOYEE_F
                 WHERE TO_CHAR(MOBILE_NO) = :login
                    OR TO_CHAR(MOBILE_NO) = '0' || :login
                    OR TO_CHAR(CARD_NO) = :login
@@ -492,16 +492,16 @@ def lookup_by_phone(phone: str):
 # ===============================
 
 def get_dashboard(card_no: str):
-    """Return dashboard for an employee. Queries HR_EMP_MASTER (a real base table)
-    instead of EMPLOYEE (which is a view whose internal scalar subqueries throw
+    """Return dashboard for an EMPLOYEE_F. Queries HR_EMP_MASTER (a real base table)
+    instead of EMPLOYEE_F (which is a view whose internal scalar subqueries throw
     ORA-01427 for certain users). All lookups are wrapped in isolated try/except
     so any single failure logs but doesn't crash the endpoint.
     """
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        # Step 1: core employee record from HR_EMP_MASTER (real table, no view internals).
-        # Join EMPLOYEE only for CARD_NO and a few aux fields. If the EMPLOYEE join
+        # Step 1: core EMPLOYEE_F record from HR_EMP_MASTER (real table, no view internals).
+        # Join EMPLOYEE_F only for CARD_NO and a few aux fields. If the EMPLOYEE_F join
         # itself throws ORA-01427, fall back to HR_EMP_MASTER alone.
         row = None
         columns = []
@@ -520,7 +520,7 @@ def get_dashboard(card_no: str):
                     h.LOCATION                   AS branch,
                     h.RPT_OFFICER                AS hod
                 FROM HR_EMP_MASTER h
-                LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+                LEFT JOIN EMPLOYEE_F e ON e.EMP_NO = h.EMPCODE
                 WHERE TO_CHAR(e.CARD_NO) = :card1
                    OR h."ATDTCARD#"      = :card2
                    OR h.EMPCODE          = :card3
@@ -528,8 +528,8 @@ def get_dashboard(card_no: str):
             row = cursor.fetchone()
             columns = [c[0].lower() for c in cursor.description]
         except Exception as e:
-            print(f"[DASHBOARD] HR_EMP_MASTER + EMPLOYEE join failed for {card_no}: {e}")
-            # Fallback: HR_EMP_MASTER alone (no EMPLOYEE join at all)
+            print(f"[DASHBOARD] HR_EMP_MASTER + EMPLOYEE_F join failed for {card_no}: {e}")
+            # Fallback: HR_EMP_MASTER alone (no EMPLOYEE_F join at all)
             try:
                 cursor.execute("""
                     SELECT
@@ -578,10 +578,10 @@ def get_dashboard(card_no: str):
         desg_code = result.get('designation')
         emp_pk_val = result.get('emp_pk')
         result['designation'] = _safe_lookup_max(
-            cursor, "SELECT MAX(DESIGNATION) FROM EMPLOYEE WHERE EMP_NO = :v",
+            cursor, "SELECT MAX(DESIGNATION) FROM EMPLOYEE_F WHERE EMP_NO = :v",
             emp_pk_val, tag="dashboard.designation"
         ) or _safe_lookup_max(
-            cursor, "SELECT MAX(DESIG_NAME) FROM EMPLOYEE WHERE EMP_NO = :v",
+            cursor, "SELECT MAX(DESIG_NAME) FROM EMPLOYEE_F WHERE EMP_NO = :v",
             emp_pk_val, tag="dashboard.designation2"
         ) or desg_code
 
@@ -637,9 +637,9 @@ def _safe_lookup_max(cursor, sql: str, value, tag: str = ""):
 # ===============================
 
 def get_user_profile(card_no: str):
-    """Return employee profile from HR_EMP_MASTER (primary) + EMPLOYEE (card_no only).
-    card_no like '100001.1' lives in EMPLOYEE.CARD_NO (numeric), not in ATDTCARD#.
-    Mirror the dashboard pattern: join EMPLOYEE only for TO_CHAR(CARD_NO), fall back
+    """Return EMPLOYEE_F profile from HR_EMP_MASTER (primary) + EMPLOYEE_F (card_no only).
+    card_no like '100001.1' lives in EMPLOYEE_F.CARD_NO (numeric), not in ATDTCARD#.
+    Mirror the dashboard pattern: join EMPLOYEE_F only for TO_CHAR(CARD_NO), fall back
     to ATDTCARD#/EMPCODE match if the join raises ORA-01427."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -648,7 +648,7 @@ def get_user_profile(card_no: str):
         columns = []
         resolved_card_no = card_no
 
-        # Primary attempt: join EMPLOYEE only to resolve CARD_NO — select no view-computed columns
+        # Primary attempt: join EMPLOYEE_F only to resolve CARD_NO — select no view-computed columns
         try:
             cursor.execute("""
                 SELECT
@@ -675,7 +675,7 @@ def get_user_profile(card_no: str):
                     h.GRADE_CD,
                     h.MARSTAT
                 FROM HR_EMP_MASTER h
-                LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+                LEFT JOIN EMPLOYEE_F e ON e.EMP_NO = h.EMPCODE
                 WHERE TO_CHAR(e.CARD_NO) = :c1
                    OR h."ATDTCARD#"      = :c2
                    OR h.EMPCODE          = :c3
@@ -685,7 +685,7 @@ def get_user_profile(card_no: str):
         except Exception as e:
             print(f"[PROFILE] join attempt failed for {card_no}: {e}")
 
-        # Fallback: HR_EMP_MASTER alone (no EMPLOYEE join)
+        # Fallback: HR_EMP_MASTER alone (no EMPLOYEE_F join)
         if row is None:
             try:
                 cursor.execute("""
@@ -762,10 +762,10 @@ def get_user_profile(card_no: str):
             dept_no, tag="profile.department"
         ) or str(dept_no or '')
         result['designation'] = _safe_lookup_max(
-            cursor, "SELECT MAX(DESIGNATION) FROM EMPLOYEE WHERE EMP_NO = :v",
+            cursor, "SELECT MAX(DESIGNATION) FROM EMPLOYEE_F WHERE EMP_NO = :v",
             empcode, tag="profile.designation"
         ) or _safe_lookup_max(
-            cursor, "SELECT MAX(DESIG_NAME) FROM EMPLOYEE WHERE EMP_NO = :v",
+            cursor, "SELECT MAX(DESIG_NAME) FROM EMPLOYEE_F WHERE EMP_NO = :v",
             empcode, tag="profile.designation2"
         ) or str(desg_cd or '')
         result['compcnm'] = _safe_lookup_max(
@@ -1169,11 +1169,11 @@ def get_leave_status(card_no: str):
         except Exception as e:
             print(f"[LEAVE_STATUS] empcode lookup failed: {e}")
 
-        # ERP-entered applications store EMP_FK as EMPLOYEE.EMP_PK
+        # ERP-entered applications store EMP_FK as EMPLOYEE_F.EMP_PK
         emp_pk = ""
         try:
             cursor.execute("""
-                SELECT EMP_PK FROM EMPLOYEE
+                SELECT EMP_PK FROM EMPLOYEE_F
                 WHERE TO_CHAR(CARD_NO) = :c1 OR TO_CHAR(CARD_NO) = :c2
             """, {"c1": card_no, "c2": card_int})
             r = cursor.fetchone()
@@ -1243,7 +1243,7 @@ def update_password(card_no: str, new_hash: str):
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            UPDATE EMPLOYEE
+            UPDATE EMPLOYEE_F
             SET USER_PASWD = :hash
             WHERE card_no = :card
         """, {"hash": new_hash, "card": card_no})
