@@ -129,7 +129,7 @@ def get_today_record(card_no: str):
         cursor.execute("""
             SELECT ID, ENTRY_TIME, EXIT_TIME, TO_CHAR(CARD_NO)
             FROM ATTENDANCE_RECORDS
-            WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+            WHERE (TO_CHAR(CARD_NO) = :card )
               AND TRUNC(ATTENDANCE_DATE) = TRUNC(SYSDATE)
             ORDER BY ID DESC
             FETCH FIRST 1 ROWS ONLY
@@ -227,7 +227,8 @@ def get_open_overnight_record(card_no: str, max_window_hours: int = 16):
 
 def _card_int(card_no: str) -> str:
     """Return integer part of card_no (e.g. '100002' from '100002.1')."""
-    return card_no.split(".")[0] if "." in card_no else card_no
+    # return card_no.split(".")[0] if "." in card_no else card_no
+    return card_no
 
 
 def _get_empcode(card_no: str) -> str:

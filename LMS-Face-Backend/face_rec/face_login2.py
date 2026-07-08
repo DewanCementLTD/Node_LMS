@@ -371,7 +371,7 @@ def identify_face(b64_images):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT e.EMP_NAME
-            FROM EMPLOYEE e
+            FROM EMPLOYEE_F e
             WHERE TO_CHAR(e.CARD_NO) = :empcode
                OR TO_CHAR(e.CARD_NO) = :empcode_int
         """, {
