@@ -602,8 +602,8 @@ def get_dashboard(card_no: str):
         balance = None
         try:
             cursor.execute(
-                "SELECT SUM(balance) FROM ALL_LEAVE_BAL_V WHERE card_no = :c",
-                {"c": card_no},
+                f"SELECT SUM(balance) FROM ALL_LEAVE_BAL_V WHERE {_BAL_EMP_FILTER}",
+                {"card": card_no},
             )
             r = cursor.fetchone()
             balance = float(r[0]) if r and r[0] is not None else None
@@ -865,8 +865,17 @@ def _type_matches(t: dict, value) -> bool:
 
 # ===============================
 # LEAVE BALANCES (mobile + web legacy endpoint)
-# Merged: ALL_LEAVE_BAL_V rows + LEAVE_TYPES entries missing from the view.
+# Strictly ALL_LEAVE_BAL_V rows — real balances only, negatives included.
 # ===============================
+
+# ALL_LEAVE_BAL_V keys employees by numeric EMP_PK/CARD_NO, but the app's card
+# identifier is a dotted string ('50202309.1.2') — binding it straight into the
+# NUMBER column raises ORA-01722. Resolve it to EMP_PK via EMPLOYEE_F instead.
+_BAL_EMP_FILTER = """EMP_PK IN (
+        SELECT e.EMP_PK FROM EMPLOYEE_F e
+        WHERE TO_CHAR(e.CARD_NO) = :card OR TO_CHAR(e.EMP_NO) = :card
+    )"""
+
 
 def get_leave_balances(card_no: str):
     conn = get_connection()
@@ -874,10 +883,10 @@ def get_leave_balances(card_no: str):
     try:
         items = []
         try:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT leave_type, leave_desc, balance
                 FROM ALL_LEAVE_BAL_V
-                WHERE card_no = :card
+                WHERE {_BAL_EMP_FILTER}
             """, {"card": card_no})
             for r in cursor.fetchall():
                 items.append({
@@ -888,31 +897,6 @@ def get_leave_balances(card_no: str):
                 })
         except Exception as e:
             print(f"[LEAVE_BAL] ALL_LEAVE_BAL_V query failed: {e}")
-
-        # Merge in LEAVE_TYPES entries the view doesn't have (e.g. OD)
-        types = _leave_types_meta(cursor)
-        for t in types:
-            matched = None
-            for it in items:
-                if _type_matches(t, it["leave_type"]) or (
-                    t["desc"] and str(it.get("leave_desc") or "").strip().upper() == t["desc"].upper()
-                ):
-                    matched = it
-                    break
-            if matched:
-                # OD is applicable irrespective of its balance number
-                if t["is_od"]:
-                    matched["is_od"] = True
-                    if (matched.get("balance") or 0) <= 0:
-                        matched["balance"] = 999
-                continue
-            bal = 999 if t["is_od"] else (t["entitlement"] if t["entitlement"] is not None else 0)
-            items.append({
-                "leave_type": t["code"] or t["pk"],
-                "leave_desc": t["desc"],
-                "balance": bal,
-                "is_od": t["is_od"],
-            })
 
         return items
 
@@ -934,9 +918,9 @@ def get_leave_types(card_no: str):
     try:
         balances = []  # (leave_type, leave_desc, balance)
         try:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT leave_type, leave_desc, balance
-                FROM ALL_LEAVE_BAL_V WHERE card_no = :card
+                FROM ALL_LEAVE_BAL_V WHERE {_BAL_EMP_FILTER}
             """, {"card": card_no})
             balances = cursor.fetchall()
         except Exception as e:
@@ -1039,10 +1023,10 @@ def apply_leave(card_no: str,
             if sel.get("pk") is not None:
                 candidates.add(str(sel["pk"]).strip().upper())
         try:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT leave_type, leave_desc, balance
                 FROM ALL_LEAVE_BAL_V
-                WHERE card_no = :card
+                WHERE {_BAL_EMP_FILTER}
             """, {"card": card_no})
             current_balance = None
             for r in cursor.fetchall():
