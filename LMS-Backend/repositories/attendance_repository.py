@@ -236,7 +236,7 @@ def _get_empcode(card_no: str) -> str:
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            SELECT EMPCODE FROM EMPLOYEE_F
+            SELECT CARD_NO FROM EMPLOYEE_F
             WHERE TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
         """, {"card": card_no, "card_int": _card_int(card_no)})
         row = cursor.fetchone()
