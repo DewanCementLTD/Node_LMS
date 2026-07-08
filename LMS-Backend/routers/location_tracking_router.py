@@ -40,7 +40,7 @@ async def get_tracking_settings(emp_code: str):
                 TRACK_LOCATION, 
                 TRACK_LOCATION_HR,
                 STATUS
-            FROM HR_EMP_MASTER 
+            FROM hr_emp_master_lms 
             WHERE EMPCODE = :emp_code
         """, {"emp_code": emp_code})
         
@@ -113,7 +113,7 @@ async def update_tracking_settings(
         
         # Update HR_EMP_MASTER
         cursor.execute("""
-            UPDATE HR_EMP_MASTER 
+            UPDATE hr_emp_master_lms 
             SET 
                 TRACK_LOCATION = :track_location,
                 TRACK_LOCATION_HR = :track_location_hr,
