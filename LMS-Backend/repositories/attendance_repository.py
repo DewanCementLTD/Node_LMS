@@ -125,13 +125,15 @@ def get_today_record(card_no: str):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # ROWNUM (not FETCH FIRST) so this also parses on pre-12c Oracle.
         cursor.execute("""
-            SELECT ID, ENTRY_TIME, EXIT_TIME, TO_CHAR(CARD_NO)
-            FROM ATTENDANCE_RECORDS
-            WHERE TO_CHAR(CARD_NO) = :card
-              AND TRUNC(ATTENDANCE_DATE) = TRUNC(SYSDATE)
-            ORDER BY ID DESC
-            FETCH FIRST 1 ROWS ONLY
+            SELECT * FROM (
+                SELECT ID, ENTRY_TIME, EXIT_TIME, TO_CHAR(CARD_NO)
+                FROM ATTENDANCE_RECORDS
+                WHERE TO_CHAR(CARD_NO) = :card
+                  AND TRUNC(ATTENDANCE_DATE) = TRUNC(SYSDATE)
+                ORDER BY ID DESC
+            ) WHERE ROWNUM = 1
         """, {"card": card_no})
         row = cursor.fetchone()
         if row:
@@ -165,18 +167,19 @@ def get_open_overnight_record(card_no: str, max_window_hours: int = 16):
     try:
         # Most recent OPEN check-in from a previous day, with hours since entry.
         cursor.execute("""
-            SELECT ID, ENTRY_TIME, TO_CHAR(CARD_NO), EMPCODE,
-                   TO_CHAR(ATTENDANCE_DATE, 'YYYY-MM-DD'),
-                   (SYSDATE - (TRUNC(ATTENDANCE_DATE)
-                               + TO_NUMBER(SUBSTR(ENTRY_TIME,1,2))/24
-                               + TO_NUMBER(SUBSTR(ENTRY_TIME,4,2))/1440)) * 24 AS hrs_since_in
-            FROM ATTENDANCE_RECORDS
-            WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
-              AND ENTRY_TIME IS NOT NULL AND EXIT_TIME IS NULL
-              AND TRUNC(ATTENDANCE_DATE) < TRUNC(SYSDATE)
-              AND REGEXP_LIKE(ENTRY_TIME, '^[0-9][0-9]:[0-9][0-9]$')
-            ORDER BY ID DESC
-            FETCH FIRST 1 ROWS ONLY
+            SELECT * FROM (
+                SELECT ID, ENTRY_TIME, TO_CHAR(CARD_NO), EMPCODE,
+                       TO_CHAR(ATTENDANCE_DATE, 'YYYY-MM-DD'),
+                       (SYSDATE - (TRUNC(ATTENDANCE_DATE)
+                                   + TO_NUMBER(SUBSTR(ENTRY_TIME,1,2))/24
+                                   + TO_NUMBER(SUBSTR(ENTRY_TIME,4,2))/1440)) * 24 AS hrs_since_in
+                FROM ATTENDANCE_RECORDS
+                WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+                  AND ENTRY_TIME IS NOT NULL AND EXIT_TIME IS NULL
+                  AND TRUNC(ATTENDANCE_DATE) < TRUNC(SYSDATE)
+                  AND REGEXP_LIKE(ENTRY_TIME, '^[0-9][0-9]:[0-9][0-9]$')
+                ORDER BY ID DESC
+            ) WHERE ROWNUM = 1
         """, {"card": card_no, "card_int": card_int})
         row = cursor.fetchone()
         if not row:
