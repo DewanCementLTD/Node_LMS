@@ -124,16 +124,15 @@ def get_today_record(card_no: str):
     """
     conn = get_connection()
     cursor = conn.cursor()
-    card_int = _card_int(card_no)
     try:
         cursor.execute("""
             SELECT ID, ENTRY_TIME, EXIT_TIME, TO_CHAR(CARD_NO)
             FROM ATTENDANCE_RECORDS
-            WHERE (TO_CHAR(CARD_NO) = :card )
+            WHERE TO_CHAR(CARD_NO) = :card
               AND TRUNC(ATTENDANCE_DATE) = TRUNC(SYSDATE)
             ORDER BY ID DESC
             FETCH FIRST 1 ROWS ONLY
-        """, {"card": card_no, "card_int": card_int})
+        """, {"card": card_no})
         row = cursor.fetchone()
         if row:
             return {
