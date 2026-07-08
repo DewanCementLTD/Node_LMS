@@ -51,7 +51,7 @@ def ensure_recruitment_company_columns():
                     SET {col} = (
                         SELECT TO_NUMBER({src})
                         FROM HR_EMP_MASTER h
-                        LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+                        LEFT JOIN EMPLOYEE_F e ON e.EMPCODE = h.EMPCODE
                         WHERE TO_CHAR(e.CARD_NO) = j.CREATED_BY
                            OR TO_CHAR(h."ATDTCARD#") = j.CREATED_BY
                            OR h.EMPCODE = j.CREATED_BY

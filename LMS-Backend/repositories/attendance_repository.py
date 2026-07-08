@@ -222,7 +222,7 @@ def get_open_overnight_record(card_no: str, max_window_hours: int = 16):
 
 
 # ------------------------------------------------------------------
-# LOOK UP EMP_FK (EMPCODE) from EMPLOYEE table for a given CARD_NO
+# LOOK UP EMP_FK (EMPCODE) from EMPLOYEE_F table for a given CARD_NO
 # ------------------------------------------------------------------
 
 def _card_int(card_no: str) -> str:
@@ -235,7 +235,7 @@ def _get_empcode(card_no: str) -> str:
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            SELECT EMPCODE FROM EMPLOYEE
+            SELECT EMPCODE FROM EMPLOYEE_F
             WHERE TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
         """, {"card": card_no, "card_int": _card_int(card_no)})
         row = cursor.fetchone()
@@ -246,12 +246,12 @@ def _get_empcode(card_no: str) -> str:
 
 
 def _get_emp_fk(card_no: str):
-    """Get numeric EMP_FK (EMP_PK) for DUTY_ROSTER from EMPLOYEE table."""
+    """Get numeric EMP_FK (EMP_PK) for DUTY_ROSTER from EMPLOYEE_F table."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            SELECT EMP_PK FROM EMPLOYEE
+            SELECT EMP_PK FROM EMPLOYEE_F
             WHERE TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
         """, {"card": card_no, "card_int": _card_int(card_no)})
         row = cursor.fetchone()
@@ -268,7 +268,7 @@ def _get_compc_brnch(card_no: str):
     try:
         cursor.execute("""
             SELECT NVL(COMPC, 1), NVL(BRNCH, 1)
-            FROM EMPLOYEE
+            FROM EMPLOYEE_F
             WHERE TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
         """, {"card": card_no, "card_int": _card_int(card_no)})
         row = cursor.fetchone()

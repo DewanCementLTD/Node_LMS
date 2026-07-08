@@ -187,7 +187,7 @@ def get_all_locations_summary(date_str: str, allowed_companies=None, allowed_bra
                 MAX(lt.LONGITUDE) KEEP (DENSE_RANK LAST ORDER BY lt.RECORDED_AT) AS LAST_LNG,
                 MAX(lt.ACCURACY) KEEP (DENSE_RANK LAST ORDER BY lt.RECORDED_AT) AS LAST_ACC
             FROM LOCATION_TRACKS lt
-            INNER JOIN EMPLOYEE e ON TO_CHAR(e.CARD_NO) = lt.CARD_NO
+            INNER JOIN EMPLOYEE_F e ON TO_CHAR(e.CARD_NO) = lt.CARD_NO
                                   OR e.CARD_NO = TO_NUMBER(REGEXP_SUBSTR(lt.CARD_NO, '^[0-9]+'))
             INNER JOIN HR_EMP_MASTER h ON h.EMPCODE = e.EMPCODE
             WHERE lt.ATTENDANCE_DATE = TO_DATE(:dt, 'YYYY-MM-DD'){extra_filter}
@@ -354,7 +354,7 @@ def _fetch_trail_rows(from_date, to_date, *, allowed_companies=None, allowed_bra
                 lt.LONGITUDE,
                 lt.ACCURACY
             FROM LOCATION_TRACKS lt
-            INNER JOIN EMPLOYEE e ON TO_CHAR(e.CARD_NO) = lt.CARD_NO
+            INNER JOIN EMPLOYEE_F e ON TO_CHAR(e.CARD_NO) = lt.CARD_NO
                                   OR e.CARD_NO = TO_NUMBER(REGEXP_SUBSTR(lt.CARD_NO, '^[0-9]+'))
             INNER JOIN HR_EMP_MASTER h ON h.EMPCODE = e.EMPCODE
             WHERE lt.ATTENDANCE_DATE BETWEEN TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')

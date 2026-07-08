@@ -6,5 +6,5 @@ __pycache__/
 venv/
 *.log
 
-OpenrouterTesting.py
-Google.py
+./OpenrouterTesting.py
+./Google.py

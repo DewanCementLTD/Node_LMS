@@ -95,7 +95,7 @@ def get_all_registered_employees() -> list:
         cursor.execute("""
             SELECT f.EMPCODE, e.EMP_NAME
             FROM EMP_FACE_EMBEDDINGS f
-            LEFT JOIN EMPLOYEE e ON TO_CHAR(e.CARD_NO) = f.EMPCODE
+            LEFT JOIN EMPLOYEE_F e ON TO_CHAR(e.CARD_NO) = f.EMPCODE
             WHERE f.IS_ACTIVE = 'Y'
         """)
         rows = cursor.fetchall()

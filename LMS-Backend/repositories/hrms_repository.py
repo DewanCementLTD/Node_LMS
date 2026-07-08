@@ -34,7 +34,7 @@ def get_next_empcode() -> str:
 
 
 # ------------------------------------------------------------------
-# CREATE EMPLOYEE
+# CREATE EMPLOYEE_F
 # ------------------------------------------------------------------
 
 def _str_or_none(val):
@@ -175,7 +175,7 @@ def create_employee(data: dict) -> dict:
 
 
 # ------------------------------------------------------------------
-# GET EMPLOYEE BY EMPCODE
+# GET EMPLOYEE_F BY EMPCODE
 # ------------------------------------------------------------------
 
 def get_employee_by_empcode(empcode: str) -> dict | None:
@@ -264,7 +264,7 @@ def get_employee_by_empcode(empcode: str) -> dict | None:
 
 
 # ------------------------------------------------------------------
-# EMPLOYEE ID CARD (resolved names for printing)
+# EMPLOYEE_F ID CARD (resolved names for printing)
 # ------------------------------------------------------------------
 
 def get_employee_card(empcode: str) -> dict | None:
@@ -315,7 +315,7 @@ def get_employee_card(empcode: str) -> dict | None:
 
 
 # ------------------------------------------------------------------
-# UPDATE EMPLOYEE
+# UPDATE EMPLOYEE_F
 # ------------------------------------------------------------------
 
 def update_employee(empcode: str, data: dict) -> dict:
@@ -430,7 +430,7 @@ def search_employees_hrms(query: str, allowed_companies=None, allowed_branches=N
                 h.SEX, h.LOCATION,
                 h.TRACK_LOCATION, h.TRACK_LOCATION_HR
             FROM HR_EMP_MASTER h
-            LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+            LEFT JOIN EMPLOYEE_F e ON e.EMPCODE = h.EMPCODE
             WHERE (UPPER(h.NAME) LIKE :q
                OR h.EMPCODE LIKE :q
                OR h."ATDTCARD#" LIKE :q
@@ -465,7 +465,7 @@ def list_employees_hrms(status: str = None, allowed_companies=None, allowed_bran
                     h.SEX, h.LOCATION,
                     h.TRACK_LOCATION, h.TRACK_LOCATION_HR
                 FROM HR_EMP_MASTER h
-                LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+                LEFT JOIN EMPLOYEE_F e ON e.EMPCODE = h.EMPCODE
             """
     try:
         params = {}
@@ -630,18 +630,18 @@ def _roster_card_filter(compc, brnch, params_out, prefix="rc"):
         return ""
 
     where_inner = " AND ".join(conds)
-    # DUTY_ROSTER.CARD_NO matches EMPLOYEE.CARD_NO (e.g. "100011.2").
+    # DUTY_ROSTER.CARD_NO matches EMPLOYEE_F.CARD_NO (e.g. "100011.2").
     # ATTENDANCE_RECORDS.CARD_NO matches the integer part (e.g. 100011).
     # Also include HR_EMP_MASTER.ATDTCARD# as a fallback for employees missing
-    # from the EMPLOYEE view. The IN-list covers all three representations so the
+    # from the EMPLOYEE_F view. The IN-list covers all three representations so the
     # same filter works for both DUTY_ROSTER and ATTENDANCE_RECORDS queries.
     return (
         f' AND TO_CHAR(CARD_NO) IN ('
         f'SELECT TO_CHAR(e.CARD_NO) FROM HR_EMP_MASTER h '
-        f'JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE WHERE {where_inner} '
+        f'JOIN EMPLOYEE_F e ON e.EMPCODE = h.EMPCODE WHERE {where_inner} '
         f'UNION '
         f"SELECT REGEXP_SUBSTR(TO_CHAR(e.CARD_NO), '^[0-9]+') FROM HR_EMP_MASTER h "
-        f'JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE WHERE {where_inner} '
+        f'JOIN EMPLOYEE_F e ON e.EMPCODE = h.EMPCODE WHERE {where_inner} '
         f'UNION '
         f'SELECT TO_CHAR(h."ATDTCARD#") FROM HR_EMP_MASTER h '
         f'WHERE h."ATDTCARD#" IS NOT NULL AND {where_inner})'
@@ -746,7 +746,7 @@ def get_hr_dashboard_stats(qdate: str = None, compc=None, brnch=None) -> dict:
                 FROM HR_EMP_MASTER h
                 LEFT JOIN HR_DEPT dep
                     ON TO_CHAR(dep.DEPT_NO) = TO_CHAR(h.DEPT_NO) AND TO_CHAR(dep.COMPC) = TO_CHAR(h.UNIT_ID)
-                LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+                LEFT JOIN EMPLOYEE_F e ON e.EMPCODE = h.EMPCODE
                 LEFT JOIN DUTY_ROSTER d
                     ON TO_CHAR(d.CARD_NO) = TO_CHAR(e.CARD_NO)
                     AND TRUNC(d.ROSTER_DATE) = {td}
@@ -876,7 +876,7 @@ def get_hr_dashboard_stats(qdate: str = None, compc=None, brnch=None) -> dict:
                     la.LEAVE_DAYS,
                     NVL(dep.DEPT_NAME, 'N/A') AS dept
                 FROM LEAVE_APPLICATION la
-                LEFT JOIN EMPLOYEE e ON TO_CHAR(e.CARD_NO) = TO_CHAR(la.EMP_FK)
+                LEFT JOIN EMPLOYEE_F e ON TO_CHAR(e.CARD_NO) = TO_CHAR(la.EMP_FK)
                 LEFT JOIN HR_EMP_MASTER h ON h.EMPCODE = e.EMPCODE
                 LEFT JOIN HR_DEPT dep ON TO_CHAR(dep.DEPT_NO) = TO_CHAR(h.DEPT_NO) AND TO_CHAR(dep.COMPC) = TO_CHAR(h.UNIT_ID)
                 WHERE la.LEAVE_DATE_FROM >= TRUNC(SYSDATE)
@@ -1195,7 +1195,7 @@ def get_bulk_attendance_summary(
     allowed_branches=None,
 ) -> list:
     """Return aggregated attendance stats for every active employee in the given
-    date range, filtered by company/branch.  Tries DUTY_ROSTER + EMPLOYEE join
+    date range, filtered by company/branch.  Tries DUTY_ROSTER + EMPLOYEE_F join
     first; falls back to ATTENDANCE_RECORDS if DUTY_ROSTER is absent; final
     fallback returns employee list with zero counts if both tables are missing."""
     conn = get_connection()
@@ -1252,7 +1252,7 @@ def get_bulk_attendance_summary(
                              THEN 1 ELSE 0 END)                       AS half_days,
                     0                                                 AS working_minutes
                 FROM HR_EMP_MASTER h
-                LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
+                LEFT JOIN EMPLOYEE_F e ON e.EMPCODE = h.EMPCODE
                 LEFT JOIN TMS_DUTY_ROSTER_V v
                     ON  TO_CHAR(v.CARD_NO) = TO_CHAR(e.CARD_NO)
                     AND TRUNC(v.ROSTER_DATE) BETWEEN
@@ -1359,7 +1359,7 @@ def get_bulk_attendance_details(
 
         # Source: TMS_DUTY_ROSTER_V — the ERP duty-roster view, one row per
         # employee per rostered day carrying the late / half-day / absent flags
-        # the app cannot derive itself. Joined EMPLOYEE (full card) → HR_EMP_MASTER
+        # the app cannot derive itself. Joined EMPLOYEE_F (full card) → HR_EMP_MASTER
         # (name / dept), so only active employees in the selected company/branch
         # appear. Each row is tagged with a status + boolean flags so the report
         # can colour late (yellow), half-day (orange) and absent (red).
@@ -1379,7 +1379,7 @@ def get_bulk_attendance_details(
                 v.MORNING_HALF_DAY                       AS morning_half_day,
                 v.EAR_OUT_HALF_DAY                       AS ear_out_half_day
             FROM TMS_DUTY_ROSTER_V v
-            JOIN EMPLOYEE e      ON TO_CHAR(e.CARD_NO) = TO_CHAR(v.CARD_NO)
+            JOIN EMPLOYEE_F e      ON TO_CHAR(e.CARD_NO) = TO_CHAR(v.CARD_NO)
             JOIN HR_EMP_MASTER h ON h.EMPCODE = e.EMPCODE
             WHERE h.STATUS = 'A'
               AND TRUNC(v.ROSTER_DATE) BETWEEN
