@@ -160,7 +160,7 @@ export function Sidebar() {
         <div className="h-16 flex items-center justify-between px-4 border-b border-gray-100">
           <div className="flex items-center gap-2 min-w-0">
             <Image
-              src="/LMS_Black.png"
+              src="/YDC-HD2.png"
               alt="LMS Logo"
               width={36}
               height={36}

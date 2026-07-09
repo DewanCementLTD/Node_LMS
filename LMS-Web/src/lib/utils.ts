@@ -23,6 +23,8 @@ export function getStatusColor(status: string): string {
     case "APPROVED":
       return "bg-emerald-100 text-emerald-800";
     case "PENDING":
+    case "WAITING":
+    case "WAITING FOR HOD":
       return "bg-amber-100 text-amber-800";
     case "REJECTED":
       return "bg-red-100 text-red-800";

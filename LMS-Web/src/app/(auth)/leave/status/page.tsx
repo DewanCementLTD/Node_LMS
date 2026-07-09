@@ -14,11 +14,16 @@ export default function LeaveStatusPage() {
   const { leaveHistory, leaveBalances, loading, refresh } = useLeaveController();
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
+  // Newest leave first (backend sorts too — this keeps the order stable
+  // regardless of which endpoint variant served the data)
+  const sorted = [...leaveHistory].sort(
+    (a, b) => (b.from_date || "").localeCompare(a.from_date || "")
+  );
   const filtered =
     statusFilter === "ALL"
-      ? leaveHistory
-      : leaveHistory.filter(
-          (l) => l.status?.toUpperCase() === statusFilter
+      ? sorted
+      : sorted.filter(
+          (l) => (l.status?.toUpperCase() || "").startsWith(statusFilter)
         );
 
   if (loading) return <Spinner />;
@@ -67,10 +72,9 @@ export default function LeaveStatusPage() {
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option value="ALL">All Status</option>
-                <option value="PENDING">Pending</option>
+                <option value="WAITING">Waiting</option>
                 <option value="APPROVED">Approved</option>
                 <option value="REJECTED">Rejected</option>
-                <option value="CANCELLED">Cancelled</option>
               </select>
             </div>
           </div>

@@ -196,6 +196,10 @@ def authenticate_user(username: str, password: str) -> dict | None:
                     FROM HR_EMP_MASTER h
                     LEFT JOIN EMPLOYEE_F e ON e.EMP_NO = h.EMPCODE
                     WHERE h.EMPCODE = :ec
+                    ORDER BY CASE
+                        WHEN TO_CHAR(e.COMPC) = TO_CHAR(h.UNIT_ID) THEN 0
+                        WHEN UPPER(REPLACE(e.EMP_NAME, ' ', '')) = UPPER(REPLACE(h.NAME, ' ', '')) THEN 1
+                        ELSE 2 END
                 """, {"ec": empcode})
                 row = cur.fetchone()
                 if row:
@@ -213,6 +217,10 @@ def authenticate_user(username: str, password: str) -> dict | None:
                     FROM HR_EMP_MASTER h
                     LEFT JOIN EMPLOYEE_F e ON e.EMP_NO = h.EMPCODE
                     WHERE h."MOBILE#" IN (:mv1, :mv2, :mv3)
+                    ORDER BY CASE
+                        WHEN TO_CHAR(e.COMPC) = TO_CHAR(h.UNIT_ID) THEN 0
+                        WHEN UPPER(REPLACE(e.EMP_NAME, ' ', '')) = UPPER(REPLACE(h.NAME, ' ', '')) THEN 1
+                        ELSE 2 END
                 """, {"mv1": mv, "mv2": mv_w, "mv3": mv_no0})
                 row = cur.fetchone()
                 if row:
@@ -286,11 +294,49 @@ def authenticate_user(username: str, password: str) -> dict | None:
                 "has_EMPLOYEE_F_features": has_EMPLOYEE_F_features,  # False if not in HR_EMP_MASTER
             }
 
-        # ── STEP 2: HR_EMP_MASTER (normal EMPLOYEE_F) ───────────────────
-        # Regular EMPLOYEE_Fs can only access their own data, NO HR admin features
+        # ── STEP 2: normal EMPLOYEE_F login ─────────────────────────────
+        # Regular EMPLOYEE_Fs can only access their own data, NO HR admin features.
+        # EMPLOYEE_F is the definitive per-person row (CARD_NO unique, own
+        # USER_PASWD and EMP_NAME), so try it FIRST — the HR_EMP_MASTER join via
+        # EMP_NO=EMPCODE is ambiguous (the same EMP_NO maps to different people
+        # per UNIT_ID) and used to log users in as someone else.
         l     = username.strip()
         l_w0  = ('0' + l) if not l.startswith('0') else l
         l_no0 = l[1:]     if l.startswith('0')     else l
+        try:
+            cur.execute("""
+                SELECT TO_CHAR(CARD_NO), USER_PASWD, EMP_NAME, EMP_NO
+                FROM EMPLOYEE_F
+                WHERE TO_CHAR(MOBILE_NO) IN (:l1, :l2)
+                   OR TO_CHAR(CARD_NO) = :l3
+                   OR EMP_NO = :l4
+                ORDER BY CASE WHEN ACTIVE = 'YES' THEN 0 ELSE 1 END,
+                         DATE_OF_JOIN DESC
+            """, {"l1": l, "l2": l_no0, "l3": l, "l4": l})
+            row = cur.fetchone()
+            if row:
+                stored_paswd = (row[1] or "").strip()
+                if stored_paswd and stored_paswd != password.strip():
+                    print(f"[AUTH] EMPLOYEE_F: password mismatch for {username}")
+                    return None
+                print(f"[AUTH] EMPLOYEE_F login: card_no={row[0]}, emp_name={row[2]}")
+                return {
+                    "card_no": str(row[0]) if row[0] else l,
+                    "user_paswd": row[1],
+                    "emp_name": str(row[2] or "").strip(),
+                    "hr_admin": "N",
+                    "face_registered": "N",
+                    "empcode": str(row[3] or "").strip(),
+                    "allowed_companies": [],
+                    "allowed_branches": [],
+                    "company_list": [],
+                    "branch_list": [],
+                    "has_self_service": True,
+                    "has_EMPLOYEE_F_features": True,
+                }
+        except Exception as e:
+            print(f"[AUTH] EMPLOYEE_F primary lookup failed: {e}")
+
         try:
             cur.execute("""
                 SELECT TO_CHAR(e.CARD_NO), e.USER_PASWD, h.NAME,
@@ -299,6 +345,10 @@ def authenticate_user(username: str, password: str) -> dict | None:
                 LEFT JOIN EMPLOYEE_F e ON e.EMP_NO = h.EMPCODE
                 WHERE h."MOBILE#" IN (:l1, :l2, :l3)
                    OR h."ATDTCARD#" = :l4 OR h.EMPCODE = :l5
+                ORDER BY CASE
+                    WHEN TO_CHAR(e.COMPC) = TO_CHAR(h.UNIT_ID) THEN 0
+                    WHEN UPPER(REPLACE(e.EMP_NAME, ' ', '')) = UPPER(REPLACE(h.NAME, ' ', '')) THEN 1
+                    ELSE 2 END
             """, {"l1": l, "l2": l_w0, "l3": l_no0, "l4": l, "l5": l})
             row = cur.fetchone()
             if row:
@@ -375,6 +425,30 @@ def get_user_by_login(login: str):
     try:
         print(f"[LOGIN] Searching for: '{login}'")
 
+        # ---- EMPLOYEE_F first: exact per-person row (unique CARD_NO) ----
+        try:
+            cursor.execute("""
+                SELECT TO_CHAR(CARD_NO), USER_PASWD, EMP_NAME, EMP_NO
+                FROM EMPLOYEE_F
+                WHERE TO_CHAR(MOBILE_NO) = :login
+                   OR TO_CHAR(CARD_NO) = :login
+                   OR EMP_NO = :login
+                ORDER BY CASE WHEN ACTIVE = 'YES' THEN 0 ELSE 1 END,
+                         DATE_OF_JOIN DESC
+            """, {"login": login})
+            row = cursor.fetchone()
+            if row and row[0]:
+                print(f"[LOGIN] Found in EMPLOYEE_F: card_no={row[0]}, has_password={bool(row[1])}")
+                return {
+                    "card_no": str(row[0]),
+                    "user_paswd": row[1],
+                    "emp_name": row[2] or "",
+                    "hr_admin": "N",
+                    "empcode": row[3] or "",
+                }
+        except Exception as e:
+            print(f"[LOGIN] EMPLOYEE_F primary query failed: {e}")
+
         # ---- Try HR_EMP_MASTER + EMPLOYEE_F join to get real CARD_NO ----
         try:
             cursor.execute("""
@@ -387,6 +461,10 @@ def get_user_by_login(login: str):
                    OR h."MOBILE#" = '0' || :login
                    OR h."ATDTCARD#" = :login
                    OR h.EMPCODE = :login
+                ORDER BY CASE
+                    WHEN TO_CHAR(e.COMPC) = TO_CHAR(h.UNIT_ID) THEN 0
+                    WHEN UPPER(REPLACE(e.EMP_NAME, ' ', '')) = UPPER(REPLACE(h.NAME, ' ', '')) THEN 1
+                    ELSE 2 END
             """, {"login": login})
             row = cursor.fetchone()
             if row:
@@ -444,6 +522,23 @@ def lookup_by_phone(phone: str):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # EMPLOYEE_F first: exact per-person row (unique CARD_NO)
+        try:
+            cursor.execute("""
+                SELECT TO_CHAR(CARD_NO), EMP_NAME, EMP_NO
+                FROM EMPLOYEE_F
+                WHERE TO_CHAR(MOBILE_NO) = :login
+                   OR TO_CHAR(CARD_NO) = :login
+                   OR EMP_NO = :login
+                ORDER BY CASE WHEN ACTIVE = 'YES' THEN 0 ELSE 1 END,
+                         DATE_OF_JOIN DESC
+            """, {"login": phone})
+            row = cursor.fetchone()
+            if row and row[0]:
+                return {"card_no": str(row[0]), "emp_name": row[1] or "", "empcode": row[2] or ""}
+        except Exception as e:
+            print(f"[LOOKUP] EMPLOYEE_F primary query failed: {e}")
+
         # Try HR_EMP_MASTER + EMPLOYEE_F join to get real CARD_NO and details
         try:
             cursor.execute("""
@@ -454,6 +549,10 @@ def lookup_by_phone(phone: str):
                    OR h."MOBILE#" = '0' || :login
                    OR h."ATDTCARD#" = :login
                    OR h.EMPCODE = :login
+                ORDER BY CASE
+                    WHEN TO_CHAR(e.COMPC) = TO_CHAR(h.UNIT_ID) THEN 0
+                    WHEN UPPER(REPLACE(e.EMP_NAME, ' ', '')) = UPPER(REPLACE(h.NAME, ' ', '')) THEN 1
+                    ELSE 2 END
             """, {"login": phone})
             row = cursor.fetchone()
             if row:
@@ -492,17 +591,66 @@ def lookup_by_phone(phone: str):
 # ===============================
 
 def get_dashboard(card_no: str):
-    """Return dashboard for an EMPLOYEE_F. Queries HR_EMP_MASTER (a real base table)
-    instead of EMPLOYEE_F (which is a view whose internal scalar subqueries throw
-    ORA-01427 for certain users). All lookups are wrapped in isolated try/except
-    so any single failure logs but doesn't crash the endpoint.
+    """Return dashboard for an EMPLOYEE_F. EMPLOYEE_F.CARD_NO is the app's exact,
+    unique identity, so query it FIRST — it also carries the readable DESIGNATION /
+    DEPARTMENT descriptions and company/branch names. EMP_NO ('F-74') is NOT unique
+    across units (the same code maps to different people per UNIT_ID), so any
+    HR_EMP_MASTER join via EMP_NO=EMPCODE must order candidates by unit/name match
+    or it can return a different employee entirely. All lookups are wrapped in
+    isolated try/except so any single failure logs but doesn't crash the endpoint.
     """
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        # Step 1: core EMPLOYEE_F record from HR_EMP_MASTER (real table, no view internals).
-        # Join EMPLOYEE_F only for CARD_NO and a few aux fields. If the EMPLOYEE_F join
-        # itself throws ORA-01427, fall back to HR_EMP_MASTER alone.
+        # Step 0: EMPLOYEE_F by exact CARD_NO — unambiguous, one person, and already
+        # holds the description fields the app should display.
+        try:
+            cursor.execute("""
+                SELECT
+                    TO_CHAR(EMP_PK)                     AS emp_pk,
+                    TO_CHAR(CARD_NO)                    AS card_no,
+                    EMP_NO                              AS emp_no,
+                    EMP_NAME                            AS emp_name,
+                    TO_CHAR(DATE_OF_JOIN, 'YYYY-MM-DD') AS date_of_join,
+                    NIC_NO                              AS nic_no,
+                    DESIGNATION                         AS designation,
+                    DEPARTMENT                          AS department,
+                    TO_CHAR(COMPC)                      AS compc,
+                    COMPCNM                             AS compcnm,
+                    TO_CHAR(BRNCH)                      AS branch,
+                    BRNCHNM                             AS brnchnm,
+                    TO_CHAR(HOD1)                       AS hod,
+                    HOD_NM                              AS hod_nm
+                FROM EMPLOYEE_F
+                WHERE TO_CHAR(CARD_NO) = :card
+            """, {"card": card_no})
+            ef_row = cursor.fetchone()
+            if ef_row:
+                ef_cols = [c[0].lower() for c in cursor.description]
+                result = dict(zip(ef_cols, ef_row))
+                if result.get('emp_pk') is not None:
+                    try:
+                        result['emp_pk'] = float(result['emp_pk'])
+                    except (ValueError, TypeError):
+                        result['emp_pk'] = None
+                balance = None
+                try:
+                    cursor.execute(
+                        f"SELECT SUM(balance) FROM ALL_LEAVE_BAL_V WHERE {_BAL_EMP_FILTER}",
+                        {"card": card_no},
+                    )
+                    r = cursor.fetchone()
+                    balance = float(r[0]) if r and r[0] is not None else None
+                except Exception as e:
+                    print(f"[DASHBOARD] balance lookup failed for {card_no}: {e}")
+                result['balance'] = balance
+                return result
+        except Exception as e:
+            print(f"[DASHBOARD] EMPLOYEE_F direct lookup failed for {card_no}: {e}")
+
+        # Step 1: core EMPLOYEE_F record from HR_EMP_MASTER (real base table).
+        # Join EMPLOYEE_F only for CARD_NO and a few aux fields. Candidates are
+        # ordered so the same-unit / same-name pairing wins over EMP_NO collisions.
         row = None
         columns = []
         try:
@@ -524,6 +672,10 @@ def get_dashboard(card_no: str):
                 WHERE TO_CHAR(e.CARD_NO) = :card1
                    OR h."ATDTCARD#"      = :card2
                    OR h.EMPCODE          = :card3
+                ORDER BY CASE
+                    WHEN TO_CHAR(e.COMPC) = TO_CHAR(h.UNIT_ID) THEN 0
+                    WHEN UPPER(REPLACE(e.EMP_NAME, ' ', '')) = UPPER(REPLACE(h.NAME, ' ', '')) THEN 1
+                    ELSE 2 END
             """, {"card1": card_no, "card2": card_no, "card3": card_no})
             row = cursor.fetchone()
             columns = [c[0].lower() for c in cursor.description]
@@ -576,13 +728,12 @@ def get_dashboard(card_no: str):
         ) or dept_code
 
         desg_code = result.get('designation')
-        emp_pk_val = result.get('emp_pk')
         result['designation'] = _safe_lookup_max(
-            cursor, "SELECT MAX(DESIGNATION) FROM EMPLOYEE_F WHERE EMP_NO = :v",
-            emp_pk_val, tag="dashboard.designation"
+            cursor, "SELECT MAX(DESIGNATION) FROM EMPLOYEE_F WHERE TO_CHAR(CARD_NO) = :v",
+            result.get('card_no'), tag="dashboard.designation"
         ) or _safe_lookup_max(
-            cursor, "SELECT MAX(DESIG_NAME) FROM EMPLOYEE_F WHERE EMP_NO = :v",
-            emp_pk_val, tag="dashboard.designation2"
+            cursor, "SELECT MAX(DESG_DESC) FROM HR_DESG WHERE TO_CHAR(DESG_CD) = TO_CHAR(:v)",
+            desg_code, tag="dashboard.designation2"
         ) or desg_code
 
         result['compcnm'] = _safe_lookup_max(
@@ -679,6 +830,10 @@ def get_user_profile(card_no: str):
                 WHERE TO_CHAR(e.CARD_NO) = :c1
                    OR h."ATDTCARD#"      = :c2
                    OR h.EMPCODE          = :c3
+                ORDER BY CASE
+                    WHEN TO_CHAR(e.COMPC) = TO_CHAR(h.UNIT_ID) THEN 0
+                    WHEN UPPER(REPLACE(e.EMP_NAME, ' ', '')) = UPPER(REPLACE(h.NAME, ' ', '')) THEN 1
+                    ELSE 2 END
             """, {"c1": card_no, "c2": card_no, "c3": card_no})
             row = cursor.fetchone()
             columns = [c[0].lower() for c in cursor.description]
@@ -756,17 +911,19 @@ def get_user_profile(card_no: str):
             'uic_card_no':   None,
         }
 
-        # Isolated name lookups
+        # Isolated name lookups — designation/department come from the person's own
+        # EMPLOYEE_F row (by unique CARD_NO), never MAX() across an EMP_NO shared by
+        # different people in other units.
         result['department'] = _safe_lookup_max(
+            cursor, "SELECT MAX(DEPARTMENT) FROM EMPLOYEE_F WHERE TO_CHAR(CARD_NO) = :v",
+            resolved_card_no, tag="profile.department"
+        ) or _safe_lookup_max(
             cursor, "SELECT MAX(DEPT_NAME) FROM HR_DEPT WHERE DEPT_NO = :v",
-            dept_no, tag="profile.department"
+            dept_no, tag="profile.department2"
         ) or str(dept_no or '')
         result['designation'] = _safe_lookup_max(
-            cursor, "SELECT MAX(DESIGNATION) FROM EMPLOYEE_F WHERE EMP_NO = :v",
-            empcode, tag="profile.designation"
-        ) or _safe_lookup_max(
-            cursor, "SELECT MAX(DESIG_NAME) FROM EMPLOYEE_F WHERE EMP_NO = :v",
-            empcode, tag="profile.designation2"
+            cursor, "SELECT MAX(DESIGNATION) FROM EMPLOYEE_F WHERE TO_CHAR(CARD_NO) = :v",
+            resolved_card_no, tag="profile.designation"
         ) or str(desg_cd or '')
         result['compcnm'] = _safe_lookup_max(
             cursor, "SELECT MAX(DESCR) FROM COMPANY_INFO WHERE COMPC = :v",
@@ -944,6 +1101,9 @@ def get_leave_types(card_no: str):
                 bal = t["entitlement"]
             result.append({
                 "leave_type": t["code"] or t["pk"],
+                # PK is the only unique identifier ('CL' appears twice in
+                # LEAVE_TYPES) — clients should submit this as leave_type_id.
+                "leave_type_pk": t["pk"],
                 "leave_desc": t["desc"],
                 "balance": bal,
                 "is_od": t["is_od"],
@@ -1010,9 +1170,41 @@ def apply_leave(card_no: str,
     is_od = sel["is_od"] if sel else False
     fk_val = sel["pk"] if (sel and sel["pk"] is not None) else raw
 
+    # Resolve the applicant's own EMPLOYEE_F row — LEAVE_APPLICATION_APPLY.EMP_FK
+    # is the numeric EMP_PK, and the HOD*_MNO columns drive the approval flow.
+    emp_fk = None
+    hod1 = hod2 = hod3 = None
+    try:
+        cursor.execute("""
+            SELECT EMP_PK, EMP_NAME, COMPC, BRNCH,
+                   TO_CHAR(HOD1), TO_CHAR(HOD2), TO_CHAR(HOD3)
+            FROM EMPLOYEE_F WHERE TO_CHAR(CARD_NO) = :card
+        """, {"card": card_no})
+        er = cursor.fetchone()
+        if er:
+            emp_fk = int(er[0]) if er[0] is not None else None
+            if not emp_name:
+                emp_name = str(er[1] or "").strip()
+            if er[2] is not None:
+                compc = er[2]
+            if er[3] is not None:
+                brnch = er[3]
+            hod1, hod2, hod3 = er[4], er[5], er[6]
+    except Exception as e:
+        print(f"[LEAVE] EMPLOYEE_F lookup failed for card={card_no}: {e}")
+    if emp_fk is None:
+        # Fallback: numeric base of the dotted card ('50201552.2.3' -> 50201552)
+        try:
+            emp_fk = int(str(card_no).split(".")[0])
+        except (ValueError, TypeError):
+            cursor.close()
+            conn.close()
+            return {"status": "error", "message": f"Could not resolve employee for card {card_no}"}
+
     # Validate leave balance (skipped for OD). Match in Python against BOTH the
     # view's leave_type code AND its description — the identifier the client
     # sends comes from LEAVE_TYPES and may only line up with the view via desc.
+    previous_balance = None
     if not is_od:
         candidates = {raw.upper()}
         if sel:
@@ -1037,6 +1229,7 @@ def apply_leave(card_no: str,
             if current_balance is None:
                 print(f"[LEAVE] No balance row matched type={raw!r} (candidates={candidates}) for card={card_no}")
                 current_balance = 0
+            previous_balance = current_balance
             if current_balance <= 0:
                 cursor.close()
                 conn.close()
@@ -1053,17 +1246,30 @@ def apply_leave(card_no: str,
 
     hrs = 4 if half_day else 0
 
+    # LEAVE_TYPE_FK is a NUMBER column — require a resolvable numeric PK.
+    try:
+        fk_num = int(fk_val)
+    except (ValueError, TypeError):
+        cursor.close()
+        conn.close()
+        return {"status": "error", "message": f"Unknown leave type: {raw}"}
+
     insert_params = {
         "from_date": from_date,
         "to_date": to_date,
         "leave_days": leave_days,
-        "emp_fk": card_no,
+        "emp_fk": emp_fk,
         "hrs": hrs,
-        "leave_type_fk": fk_val,
+        "leave_type_fk": fk_num,
         "reason": reason,
         "emp_name": emp_name,
         "compc": compc,
         "brnch": brnch,
+        "previous_balance": previous_balance,
+        "year": int(from_date[:4]),
+        "hod1": hod1,
+        "hod2": hod2,
+        "hod3": hod3,
     }
 
     # LEAVE_APPLICATION_PK has no identity/default — generate it with
@@ -1072,15 +1278,18 @@ def apply_leave(card_no: str,
     import time as _time
 
     def _next_pk():
-        cursor.execute("SELECT NVL(MAX(LEAVE_APPLICATION_PK), 0) + 1 FROM LEAVE_APPLICATION")
+        cursor.execute("SELECT NVL(MAX(LEAVE_APPLICATION_PK), 0) + 1 FROM LEAVE_APPLICATION_APPLY")
         return int((cursor.fetchone() or [1])[0])
 
     last_err = None
     for attempt in range(3):
         try:
             insert_params["pk"] = _next_pk()
+            # ERP conventions in LEAVE_APPLICATION_APPLY: EMP_FK = EMPLOYEE_F.EMP_PK,
+            # APPROVAL_STATUS 'Waiting', ENTRY_DATE is a VARCHAR 'DD-MON-RR HH24:MI',
+            # TR_TYPE 'Online', HOD*_MNO drive the HOD approval chain.
             cursor.execute("""
-                INSERT INTO LEAVE_APPLICATION (
+                INSERT INTO LEAVE_APPLICATION_APPLY (
                     LEAVE_APPLICATION_PK,
                     LEAVE_DATE_FROM,
                     LEAVE_DATE_TO,
@@ -1092,8 +1301,14 @@ def apply_leave(card_no: str,
                     APPROVAL_STATUS,
                     ENTRY_DATE,
                     ENTRY_BY,
+                    PREVIOUS_BALANCE,
+                    YEAR,
                     COMPC,
-                    BRNCH
+                    BRNCH,
+                    TR_TYPE,
+                    HOD1_MNO,
+                    HOD2_MNO,
+                    HOD3_MNO
                 )
                 VALUES (
                     :pk,
@@ -1104,11 +1319,17 @@ def apply_leave(card_no: str,
                     :hrs,
                     :leave_type_fk,
                     :reason,
-                    'PENDING',
-                    SYSDATE,
+                    'Waiting',
+                    TO_CHAR(SYSDATE, 'DD-MON-RR HH24:MI', 'NLS_DATE_LANGUAGE=AMERICAN'),
                     :emp_name,
+                    :previous_balance,
+                    :year,
                     :compc,
-                    :brnch
+                    :brnch,
+                    'Online',
+                    :hod1,
+                    :hod2,
+                    :hod3
                 )
             """, insert_params)
             conn.commit()
@@ -1120,7 +1341,7 @@ def apply_leave(card_no: str,
             if "ORA-00001" in str(e) and attempt < 2:
                 _time.sleep(0.05 * (attempt + 1))
                 continue
-            print(f"[LEAVE] Insert failed for card={card_no}, type={raw} (fk={fk_val}): {e}")
+            print(f"[LEAVE] Insert failed for card={card_no}, type={raw} (fk={fk_num}): {e}")
             return {"status": "error", "message": str(e)}
 
     return {"status": "error", "message": str(last_err) if last_err else "Insert failed"}
@@ -1168,6 +1389,9 @@ def get_leave_status(card_no: str):
         except Exception as e:
             print(f"[LEAVE_STATUS] emp_pk lookup failed: {e}")
 
+        # LEAVE_APPLICATION_APPLY is where online applications live (and where
+        # apply_leave now inserts). ENTRY_DATE there is a VARCHAR, so sort by the
+        # real DATE column LEAVE_DATE_FROM instead — newest leave first.
         cursor.execute("""
             SELECT
                 ENTRY_DATE      AS entry_date,
@@ -1177,9 +1401,9 @@ def get_leave_status(card_no: str):
                 LEAVE_DAYS      AS leave_days,
                 REASON          AS reason,
                 APPROVAL_STATUS AS status
-            FROM LEAVE_APPLICATION
+            FROM LEAVE_APPLICATION_APPLY
             WHERE TO_CHAR(EMP_FK) IN (:c1, :c2, :c3, :c4)
-            ORDER BY ENTRY_DATE DESC
+            ORDER BY LEAVE_DATE_FROM DESC, LEAVE_APPLICATION_PK DESC
         """, {
             "c1": card_no,
             "c2": card_int,

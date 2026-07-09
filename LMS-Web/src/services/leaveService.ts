@@ -1,5 +1,10 @@
 import { apiRequest } from "./api";
-import { LeaveApplyRequest, LeaveStatusResponse } from "@/models/leave";
+import { LeaveApplyRequest, LeaveStatusResponse, LeaveTypesResponse } from "@/models/leave";
+
+// Full LEAVE_TYPES LOV (every applyable type, with balance where known)
+export async function fetchLeaveTypes(cardNo: string): Promise<LeaveTypesResponse> {
+  return apiRequest<LeaveTypesResponse>(`/auth/leave-types/${cardNo}`);
+}
 
 export async function applyLeave(
   cardNo: string,

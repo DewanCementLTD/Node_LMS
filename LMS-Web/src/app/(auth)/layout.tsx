@@ -55,7 +55,7 @@ function AuthShell({ children }: { children: React.ReactNode }) {
       {/* Background image with dark overlay */}
       <div
         className="fixed inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: "url('/background.png')" }}
+        style={{ backgroundImage: "url('/login-bgg.jpg')" }}
       />
       <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-sm" />
 
