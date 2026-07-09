@@ -5,6 +5,7 @@ BEFORE /attendance/{card_no} to avoid the path parameter catching them.
 """
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 
 from models.attendance_models import (
     AttendanceRequest,
@@ -86,6 +87,27 @@ def attendance_report_range(
         return {"items": items}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# GET /auth/attendance/report-pdf/{card_no}?from_date=YYYY-MM-DD&to_date=YYYY-MM-DD
+# Downloadable PDF of the same roster rows the report-range endpoint returns.
+@router.get("/attendance/report-pdf/{card_no}")
+def attendance_report_pdf(
+    card_no: str,
+    from_date: str = Query(...),
+    to_date: str = Query(...),
+):
+    from services.attendance_pdf import build_attendance_pdf
+    try:
+        pdf = build_attendance_pdf(card_no, from_date, to_date)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+    filename = f"attendance_{card_no}_{from_date}_to_{to_date}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # GET /auth/attendance/report/{card_no}/{date_str}

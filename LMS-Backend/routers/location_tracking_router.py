@@ -28,25 +28,31 @@ async def get_tracking_settings(emp_code: str):
         "status": "active"
     }
     """
+    connection = None
     try:
         connection = get_connection()
         cursor = connection.cursor()
-        
-        # Query HR_EMP_MASTER for tracking settings
+
+        # HR_EMP_MASTER_LMS.EMPCODE is a NUMBER; the app sends the dotted card
+        # ('50202309.1.2'), which lives in CARD_NO. Compare text-side only —
+        # binding a dotted string against the NUMBER column raises ORA-01722.
         cursor.execute("""
-            SELECT 
-                EMPCODE, 
-                NAME, 
-                TRACK_LOCATION, 
+            SELECT
+                CARD_NO,
+                NAME,
+                TRACK_LOCATION,
                 TRACK_LOCATION_HR,
                 STATUS
-            FROM hr_emp_master_lms 
-            WHERE EMPCODE = :emp_code
+            FROM HR_EMP_MASTER_LMS
+            WHERE CARD_NO = :emp_code
+               OR "ATDTCARD#" = :emp_code
+               OR TO_CHAR(EMPCODE) = :emp_code
         """, {"emp_code": emp_code})
-        
+
         result = cursor.fetchone()
         connection.close()
-        
+        connection = None
+
         if not result:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -65,11 +71,15 @@ async def get_tracking_settings(emp_code: str):
             "track_location": track_location,
             "track_location_hr": int(track_location_hr),
             "status": status_val,
-            "message": "Location tracking is ENABLED" if track_location == 'Y' 
+            "message": "Location tracking is ENABLED" if track_location == 'Y'
                       else "Location tracking is DISABLED"
         }
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
+        if connection:
+            connection.close()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching tracking settings: {str(e)}"
@@ -111,14 +121,16 @@ async def update_tracking_settings(
         connection = get_connection()
         cursor = connection.cursor()
         
-        # Update HR_EMP_MASTER
+        # Same text-side identifier matching as the settings lookup above.
         cursor.execute("""
-            UPDATE hr_emp_master_lms 
-            SET 
+            UPDATE HR_EMP_MASTER_LMS
+            SET
                 TRACK_LOCATION = :track_location,
                 TRACK_LOCATION_HR = :track_location_hr,
                 USR_DATE_UPD = SYSDATE
-            WHERE EMPCODE = :emp_code
+            WHERE CARD_NO = :emp_code
+               OR "ATDTCARD#" = :emp_code
+               OR TO_CHAR(EMPCODE) = :emp_code
         """, {
             "track_location": track_location.upper(),
             "track_location_hr": track_location_hr,
@@ -177,11 +189,12 @@ async def get_geofence_settings(emp_code: str):
         connection = get_connection()
         cursor = connection.cursor()
         cursor.execute("""
-            SELECT EMPCODE, NAME, LOCATION_FIXED,
+            SELECT CARD_NO, NAME, LOCATION_FIXED,
                    DEFAULT_LATITUDE, DEFAULT_LONGITUDE, MARGIN
-            FROM HR_EMP_MASTER
-            WHERE EMPCODE = :emp_code
-               OR TO_CHAR("ATDTCARD#") = :emp_code
+            FROM HR_EMP_MASTER_LMS
+            WHERE CARD_NO = :emp_code
+               OR "ATDTCARD#" = :emp_code
+               OR TO_CHAR(EMPCODE) = :emp_code
         """, {"emp_code": emp_code})
         result = cursor.fetchone()
         connection.close()
@@ -235,15 +248,15 @@ async def get_active_tracking_employees():
         cursor = connection.cursor()
         
         cursor.execute("""
-            SELECT 
-                EMPCODE,
+            SELECT
+                CARD_NO,
                 NAME,
                 TRACK_LOCATION,
                 TRACK_LOCATION_HR,
                 LOCATION,
                 DEPT_NO,
                 STATUS
-            FROM HR_EMP_MASTER
+            FROM HR_EMP_MASTER_LMS
             WHERE TRACK_LOCATION = 'Y' AND STATUS = 'A'
             ORDER BY EMPCODE
         """)
@@ -298,7 +311,7 @@ async def get_tracking_statistics():
                 SUM(CASE WHEN TRACK_LOCATION = 'Y' THEN 1 ELSE 0 END) as enabled,
                 SUM(CASE WHEN TRACK_LOCATION = 'Y' THEN TRACK_LOCATION_HR ELSE 0 END) as total_hours,
                 AVG(CASE WHEN TRACK_LOCATION = 'Y' THEN TRACK_LOCATION_HR ELSE NULL END) as avg_hours
-            FROM HR_EMP_MASTER
+            FROM HR_EMP_MASTER_LMS
         """)
         
         result = cursor.fetchone()

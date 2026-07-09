@@ -563,6 +563,24 @@ _ROSTER_CARD_FILTER = """(TO_CHAR(CARD_NO1) = :card
                OR TO_CHAR(EMP_PK) = :card)"""
 
 
+def get_roster_employee_name(card_no: str):
+    """Employee display name from DUTY_ROSTER_V (for the PDF report header)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(f"""
+            SELECT MAX(EMP_NAME) FROM DUTY_ROSTER_V
+            WHERE {_ROSTER_CARD_FILTER}
+        """, {"card": card_no})
+        row = cursor.fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def get_attendance_report(card_no: str, date_str: str):
     """Single-day roster row for a card. date_str: ORDS-style 'DD-MON-YYYY'."""
     conn = get_connection()
