@@ -873,7 +873,7 @@ def _type_matches(t: dict, value) -> bool:
 # NUMBER column raises ORA-01722. Resolve it to EMP_PK via EMPLOYEE_F instead.
 _BAL_EMP_FILTER = """EMP_PK IN (
         SELECT e.EMP_PK FROM EMPLOYEE_F e
-        WHERE TO_CHAR(e.CARD_NO) = :card OR TO_CHAR(e.EMP_NO) = :card
+        WHERE TO_CHAR(e.CARD_NO) = :card 
     )"""
 
 

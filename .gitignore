@@ -33,7 +33,7 @@ __pycache__/
 *.pyc
 *.pyo
 
-# ── Flutter / Dart (LMS_APP) ─────────────────
+── Flutter / Dart (LMS_APP) ─────────────────
 **/build/
 .dart_tool/
 **/.dart_tool/
@@ -53,7 +53,7 @@ Thumbs.db
 _submodule_git_backup/
 
 # Flutter app — maintained separately on dev PC with its own git remote
-/LMS_APP/
+# /LMS_APP/
 
 # Employee documents (sensitive — stored on disk, never in git)
 LMS-Backend/EMP_DOCS/
