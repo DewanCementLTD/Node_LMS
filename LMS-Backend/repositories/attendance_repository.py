@@ -1,9 +1,9 @@
-"""Attendance repository — reads and writes attendance ONLY via ATTENDANCE_RECORDS.
+"""Attendance repository — writes attendance ONLY via ATTENDANCE_RECORDS.
 
-duty_roster_v is an ERP-owned table that is populated automatically by the ERP;
-this app no longer reads or writes it. Late / overtime / absent / shift are
-duty_roster_v (ERP) concepts that ATTENDANCE_RECORDS cannot compute, so they are
-reported as 0/empty here.
+DUTY_ROSTER_V is an ERP-owned view populated automatically by the ERP; this
+app never writes it, but the report/summary endpoints READ it because it is
+the source of the reconciled per-day roster with the late / half-day / absent
+flags the app cannot compute itself.
 
 Table: ATTENDANCE_RECORDS
 Key columns:
@@ -195,11 +195,11 @@ def get_open_overnight_record(card_no: str, max_window_hours: int = 16):
             WHERE sh.compc = (SELECT TO_NUMBER(MAX(UNIT_ID)) FROM HR_EMP_MASTER WHERE EMPCODE = :emp)
               AND sh.shift = (
                     SELECT MIN(ROSTER_SHIFT) FROM DUTY_ROSTER_V
-                     WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
-                            OR TO_CHAR(EMP_FK) = :card)
+                     WHERE (TO_CHAR(CARD_NO1) = :card OR TO_CHAR(CARD_NO) = :card
+                            OR TO_CHAR(EMP_PK) = :card)
                        AND TRUNC(ROSTER_DATE) = TO_DATE(:rdate, 'YYYY-MM-DD'))
               AND ROWNUM = 1
-        """, {"emp": empcode, "card": card_no, "card_int": card_int, "rdate": rdate})
+        """, {"emp": empcode, "card": card_no, "rdate": rdate})
         sh = cursor.fetchone()
         if not sh:
             return None
@@ -454,17 +454,19 @@ def update_check_out(record_id: int, entry_time: str, card_no: str = None,
 
 
 # ------------------------------------------------------------------
-# ATTENDANCE REPORT — sourced from TMS_DUTY_ROSTER_V (the ERP duty-roster view)
+# ATTENDANCE REPORT — sourced from DUTY_ROSTER_V (the ERP duty-roster view)
 #
 # The view carries the ERP's own per-person-per-day roster with the derived
 # status flags the app cannot compute itself:
-#   MORNING_LATE / EARLY_OUT_LATE = 'Y'  → late      (shown yellow)
-#   MORNING_HALF_DAY / EAR_OUT_HALF_DAY  → half day  (shown orange)
-#   ABSENT = 1 with no punch             → absent    (shown red)
-# ABSENT = 1 is the roster's *default* until the ERP reconciles a punch, so a
-# row is only truly "Absent" when it also has no IN/OUT time. Late / half-day
-# imply attendance, so they take priority over the absent flag.
-# CARD_NO in the view is the full company-qualified card (e.g. 100011.2).
+#   LATE_FLAG = 'lATE'                       → late      (shown yellow)
+#   HALF_DAY = 'HALF DAY' / ABSENT_DAYS=0.5  → half day  (shown orange)
+#   ABSENT_DAYS = 1 with no punch            → absent    (shown red)
+#   STATUS                                   → holiday/leave name (e.g. 'EID UL FITR')
+# Late / half-day imply attendance, so they take priority over the absent
+# flag; ABSENT_DAYS >= 1 only counts as "Absent" when there is no IN/OUT punch.
+# Identifier columns: CARD_NO1 is the app's full dotted card ('50202309.1.2');
+# CARD_NO and EMP_PK are numeric. The roster is pre-populated months ahead,
+# so future dates exist with all flags NULL ('Off').
 # ------------------------------------------------------------------
 
 def _clean_hhmm(s):
@@ -478,22 +480,22 @@ def _clean_hhmm(s):
     return t[:5]
 
 
-def _roster_status(in_time, out_time, absent, morning_late, early_out_late, half_day):
+def _roster_status(in_time, out_time, absent_days, late_flag, half_day_flag):
     """Collapse the ERP roster flags into a single status label. Order matters:
-    late / half-day imply the person attended, so they win over the ABSENT
-    default; a row is only 'Absent' when flagged absent AND has no punch."""
-    ml = (morning_late or "").strip().upper()
-    eol = (early_out_late or "").strip().upper()
+    late / half-day imply the person attended, so they win over the absent
+    flag; a row is only 'Absent' when flagged absent AND has no punch."""
     has_punch = bool(in_time) or bool(out_time)
+    is_late = "LATE" in (late_flag or "").strip().upper()
     try:
-        hd = float(half_day or 0)
+        ad = float(absent_days or 0)
     except (TypeError, ValueError):
-        hd = 0
-    if ml == "Y" or eol == "Y":
+        ad = 0
+    is_half = bool((half_day_flag or "").strip()) or ad == 0.5
+    if is_late:
         return "Late"
-    if hd > 0:
+    if is_half:
         return "Half Day"
-    if absent and int(absent) == 1 and not has_punch:
+    if ad >= 1 and not has_punch:
         return "Absent"
     if has_punch:
         return "Present"
@@ -501,19 +503,20 @@ def _roster_status(in_time, out_time, absent, morning_late, early_out_late, half
 
 
 def _shape_roster_row(rec):
-    """Normalise a raw TMS_DUTY_ROSTER_V dict into the AttendanceRecord shape the
-    frontend expects, adding cleaned times, a status label and boolean flags."""
+    """Normalise a raw DUTY_ROSTER_V dict into the AttendanceRecord shape the
+    frontend expects, adding cleaned times, a status label and boolean flags.
+    Output keys are unchanged from the old TMS_DUTY_ROSTER_V shape so the
+    frontend contract is preserved."""
     if rec.get("roster_date") and hasattr(rec["roster_date"], "strftime"):
         rec["roster_date"] = rec["roster_date"].strftime("%Y-%m-%d")
 
     in_time = _clean_hhmm(rec.get("in_time"))
     out_time = _clean_hhmm(rec.get("out_time"))
-    absent = rec.get("absent")
-    morning_late = rec.get("morning_late")
-    early_out_late = rec.get("early_out_late")
-    half_day = (rec.get("morning_half_day") or 0) + (rec.get("ear_out_half_day") or 0)
+    absent_days = rec.get("absent_days_flag")
+    late_flag = rec.get("late_flag")
+    half_day_flag = rec.get("half_day_flag")
 
-    status = _roster_status(in_time, out_time, absent, morning_late, early_out_late, half_day)
+    status = _roster_status(in_time, out_time, absent_days, late_flag, half_day_flag)
 
     worked = _time_spent_minutes(in_time, out_time) if (in_time and out_time) else 0
 
@@ -525,34 +528,39 @@ def _shape_roster_row(rec):
     rec["late_mnt"] = 0
     rec["ot_hrs"] = 0
     rec["ot_mnt"] = 0
+    rec["absent"] = absent_days
     rec["absent_days"] = 1 if status == "Absent" else 0
-    rec["half_day"] = half_day
-    rec["morning_late"] = (morning_late or "").strip() or None
-    rec["early_out_late"] = (early_out_late or "").strip() or None
+    rec["half_day"] = 0.5 if status == "Half Day" else 0
+    rec["morning_late"] = "Y" if status == "Late" else None
+    rec["early_out_late"] = None  # DUTY_ROSTER_V has a single late flag
     rec["status"] = status
     rec["is_late"] = status == "Late"
     rec["is_absent"] = status == "Absent"
     rec["is_half_day"] = status == "Half Day"
-    for k in ("morning_half_day", "ear_out_half_day"):
+    for k in ("absent_days_flag", "late_flag", "half_day_flag"):
         rec.pop(k, None)
     return rec
 
 
 _ROSTER_SELECT = """
-    TRUNC(ROSTER_DATE)      AS roster_date,
-    DAY_NAME                AS day_name,
-    ROSTER_SHIFT            AS roster_shift,
-    ROSTER_MONTH            AS roster_month,
-    IN_TIME                 AS in_time,
-    OUT_TIME                AS out_time,
-    ABSENT                  AS absent,
-    MORNING_LATE            AS morning_late,
-    EARLY_OUT_LATE          AS early_out_late,
-    MORNING_HALF_DAY        AS morning_half_day,
-    EAR_OUT_HALF_DAY        AS ear_out_half_day,
-    LEAVE_REMARKS           AS leave_remarks,
-    ROSTER_REMARKS          AS roster_remarks
+    TRUNC(ROSTER_DATE)               AS roster_date,
+    DAY_NAME                         AS day_name,
+    ROSTER_SHIFT                     AS roster_shift,
+    TO_CHAR(ROSTER_DATE, 'MON-YYYY') AS roster_month,
+    IN_TIME                          AS in_time,
+    OUT_TIME                         AS out_time,
+    ABSENT_DAYS                      AS absent_days_flag,
+    LATE_FLAG                        AS late_flag,
+    HALF_DAY                         AS half_day_flag,
+    STATUS                           AS leave_remarks,
+    ROSTER_REMARKS                   AS roster_remarks
 """
+
+# The app may pass the dotted card ('50202309.1.2' → CARD_NO1), the numeric
+# card or the EMP_PK; match all three text-wise so no caller breaks.
+_ROSTER_CARD_FILTER = """(TO_CHAR(CARD_NO1) = :card
+               OR TO_CHAR(CARD_NO) = :card
+               OR TO_CHAR(EMP_PK) = :card)"""
 
 
 def get_attendance_report(card_no: str, date_str: str):
@@ -562,11 +570,11 @@ def get_attendance_report(card_no: str, date_str: str):
     try:
         cursor.execute(f"""
             SELECT {_ROSTER_SELECT}
-            FROM TMS_DUTY_ROSTER_V
-            WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+            FROM DUTY_ROSTER_V
+            WHERE {_ROSTER_CARD_FILTER}
               AND TRUNC(ROSTER_DATE) = TO_DATE(:dt, 'DD-MON-YYYY')
             ORDER BY ROSTER_DATE
-        """, {"card": card_no, "card_int": _card_int(card_no), "dt": date_str})
+        """, {"card": card_no, "dt": date_str})
 
         columns = [col[0].lower() for col in cursor.description]
         result = [_shape_roster_row(dict(zip(columns, r))) for r in cursor.fetchall()]
@@ -592,15 +600,14 @@ def get_attendance_report_range(card_no: str, from_date: str, to_date: str):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        card_int = _card_int(card_no)
         cursor.execute(f"""
             SELECT {_ROSTER_SELECT}
-            FROM TMS_DUTY_ROSTER_V
-            WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+            FROM DUTY_ROSTER_V
+            WHERE {_ROSTER_CARD_FILTER}
               AND TRUNC(ROSTER_DATE) BETWEEN
                   TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
             ORDER BY ROSTER_DATE
-        """, {"card": card_no, "card_int": card_int, "from_d": from_date, "to_d": to_date})
+        """, {"card": card_no, "from_d": from_date, "to_d": to_date})
 
         columns = [col[0].lower() for col in cursor.description]
         result = [_shape_roster_row(dict(zip(columns, r))) for r in cursor.fetchall()]
@@ -626,23 +633,21 @@ def get_attendance_summary(card_no: str, from_date: str, to_date: str):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        card_int = _card_int(card_no)
-        cursor.execute("""
+        cursor.execute(f"""
             WITH r AS (
                 SELECT
                     CASE WHEN IN_TIME  IS NOT NULL AND TRIM(IN_TIME)  <> ':'
                          THEN 1 ELSE 0 END                          AS has_in,
                     CASE WHEN OUT_TIME IS NOT NULL AND TRIM(OUT_TIME) <> ':'
                          THEN 1 ELSE 0 END                          AS has_out,
-                    NVL(ABSENT, 0)                                  AS absent,
-                    CASE WHEN UPPER(NVL(MORNING_LATE, ' ')) = 'Y'
-                           OR UPPER(NVL(EARLY_OUT_LATE, ' ')) = 'Y'
+                    NVL(ABSENT_DAYS, 0)                             AS absent_days,
+                    CASE WHEN UPPER(NVL(LATE_FLAG, ' ')) LIKE '%LATE%'
                          THEN 1 ELSE 0 END                          AS is_late,
-                    CASE WHEN NVL(MORNING_HALF_DAY, 0) > 0
-                           OR NVL(EAR_OUT_HALF_DAY, 0) > 0
+                    CASE WHEN HALF_DAY IS NOT NULL
+                           OR NVL(ABSENT_DAYS, 0) = 0.5
                          THEN 1 ELSE 0 END                          AS is_half
-                FROM TMS_DUTY_ROSTER_V
-                WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+                FROM DUTY_ROSTER_V
+                WHERE {_ROSTER_CARD_FILTER}
                   AND TRUNC(ROSTER_DATE) BETWEEN
                       TO_DATE(:from_d, 'YYYY-MM-DD') AND TO_DATE(:to_d, 'YYYY-MM-DD')
             )
@@ -653,12 +658,12 @@ def get_attendance_summary(card_no: str, from_date: str, to_date: str):
                 0                                                            AS total_minutes,
                 0                                                            AS late_minutes,
                 0                                                            AS overtime_minutes,
-                SUM(CASE WHEN absent = 1 AND has_in = 0 AND has_out = 0
+                SUM(CASE WHEN absent_days >= 1 AND has_in = 0 AND has_out = 0
                          THEN 1 ELSE 0 END)                                  AS absent_days,
                 SUM(is_late)                                                 AS late_days,
                 SUM(is_half)                                                 AS half_days
             FROM r
-        """, {"card": card_no, "card_int": card_int, "from_d": from_date, "to_d": to_date})
+        """, {"card": card_no, "from_d": from_date, "to_d": to_date})
         row = cursor.fetchone()
         if not row:
             return {}
