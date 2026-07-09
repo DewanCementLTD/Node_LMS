@@ -597,7 +597,7 @@ def _execute_with_emp_filter(cursor, sql_template, compc, brnch, alias="h", extr
 
 def _roster_card_filter(compc, brnch, params_out, prefix="rc"):
     """Build a SQL fragment ' AND TO_CHAR(CARD_NO) IN (subquery)' that restricts
-    DUTY_ROSTER / ATTENDANCE_RECORDS rows to employees belonging to the given
+    DUTY_ROSTER_v / ATTENDANCE_RECORDS rows to employees belonging to the given
     company/branch lists.  Populates *params_out* with the bind variables.
     compc / brnch may be a list or a single value or None.
     Returns empty string when no filter should be applied.
@@ -630,11 +630,11 @@ def _roster_card_filter(compc, brnch, params_out, prefix="rc"):
         return ""
 
     where_inner = " AND ".join(conds)
-    # DUTY_ROSTER.CARD_NO matches EMPLOYEE_F.CARD_NO (e.g. "100011.2").
+    # DUTY_ROSTER_v.CARD_NO matches EMPLOYEE_F.CARD_NO (e.g. "100011.2").
     # ATTENDANCE_RECORDS.CARD_NO matches the integer part (e.g. 100011).
     # Also include HR_EMP_MASTER.ATDTCARD# as a fallback for employees missing
     # from the EMPLOYEE_F view. The IN-list covers all three representations so the
-    # same filter works for both DUTY_ROSTER and ATTENDANCE_RECORDS queries.
+    # same filter works for both DUTY_ROSTER_v and ATTENDANCE_RECORDS queries.
     return (
         f' AND TO_CHAR(CARD_NO) IN ('
         f'SELECT TO_CHAR(e.CARD_NO) FROM HR_EMP_MASTER h '
@@ -673,14 +673,14 @@ def get_hr_dashboard_stats(qdate: str = None, compc=None, brnch=None) -> dict:
         except Exception as e:
             print(f"[HR_DASHBOARD] Total count failed: {e}")
 
-        # Today's attendance from DUTY_ROSTER
+        # Today's attendance from DUTY_ROSTER_v
         present = 0
         absent = 0
         late = 0
         incomplete = 0
         on_leave = 0
 
-        # Present count: union of DUTY_ROSTER + ATTENDANCE_RECORDS to catch all check-ins.
+        # Present count: union of DUTY_ROSTER_v + ATTENDANCE_RECORDS to catch all check-ins.
         # Restricted to the selected company/branch via a CARD_NO subquery filter.
         present_params = {}
         card_filter = _roster_card_filter(compc, brnch, present_params, prefix="pc")
@@ -688,7 +688,7 @@ def get_hr_dashboard_stats(qdate: str = None, compc=None, brnch=None) -> dict:
             cursor.execute("""
                 SELECT COUNT(DISTINCT card_no) FROM (
                     SELECT TO_CHAR(CARD_NO) AS card_no
-                    FROM DUTY_ROSTER
+                    FROM DUTY_ROSTER_v
                     WHERE TRUNC(ROSTER_DATE) = {td} AND IN_TIME IS NOT NULL{cf}
                     UNION
                     SELECT TO_CHAR(CARD_NO) AS card_no
@@ -700,7 +700,7 @@ def get_hr_dashboard_stats(qdate: str = None, compc=None, brnch=None) -> dict:
         except Exception as e:
             print(f"[HR_DASHBOARD] Present count query failed: {e}")
 
-        # Late, on_leave, incomplete from DUTY_ROSTER; fallback incomplete from ATTENDANCE_RECORDS
+        # Late, on_leave, incomplete from DUTY_ROSTER_v; fallback incomplete from ATTENDANCE_RECORDS
         stats_params = {}
         stats_filter = _roster_card_filter(compc, brnch, stats_params, prefix="sc")
         try:
@@ -709,7 +709,7 @@ def get_hr_dashboard_stats(qdate: str = None, compc=None, brnch=None) -> dict:
                     SUM(CASE WHEN IN_TIME IS NOT NULL AND OUT_TIME IS NULL THEN 1 ELSE 0 END),
                     SUM(CASE WHEN NVL(LATE_HRS, 0) > 0 OR NVL(LATE_MNT, 0) > 0 THEN 1 ELSE 0 END),
                     SUM(CASE WHEN UPPER(STATUS) LIKE '%LEAVE%' THEN 1 ELSE 0 END)
-                FROM DUTY_ROSTER
+                FROM DUTY_ROSTER_v
                 WHERE TRUNC(ROSTER_DATE) = {td}{cf}
             """.format(td=td, cf=stats_filter), stats_params)
             row = cursor.fetchone()
@@ -718,7 +718,7 @@ def get_hr_dashboard_stats(qdate: str = None, compc=None, brnch=None) -> dict:
                 late = int(row[1] or 0)
                 on_leave = int(row[2] or 0)
         except Exception as e:
-            print(f"[HR_DASHBOARD] DUTY_ROSTER stats failed: {e}")
+            print(f"[HR_DASHBOARD] DUTY_ROSTER_v stats failed: {e}")
             try:
                 inc_params = {}
                 inc_filter = _roster_card_filter(compc, brnch, inc_params, prefix="ic")
@@ -747,7 +747,7 @@ def get_hr_dashboard_stats(qdate: str = None, compc=None, brnch=None) -> dict:
                 LEFT JOIN HR_DEPT dep
                     ON TO_CHAR(dep.DEPT_NO) = TO_CHAR(h.DEPT_NO) AND TO_CHAR(dep.COMPC) = TO_CHAR(h.UNIT_ID)
                 LEFT JOIN EMPLOYEE_F e ON e.EMPCODE = h.EMPCODE
-                LEFT JOIN DUTY_ROSTER d
+                LEFT JOIN DUTY_ROSTER_v d
                     ON TO_CHAR(d.CARD_NO) = TO_CHAR(e.CARD_NO)
                     AND TRUNC(d.ROSTER_DATE) = {td}
                 LEFT JOIN (
@@ -793,7 +793,7 @@ def get_hr_dashboard_stats(qdate: str = None, compc=None, brnch=None) -> dict:
                 SELECT
                     SUM(CASE WHEN IN_TIME IS NOT NULL THEN 1 ELSE 0 END),
                     SUM(CASE WHEN UPPER(STATUS) LIKE '%LEAVE%' THEN 1 ELSE 0 END)
-                FROM DUTY_ROSTER
+                FROM DUTY_ROSTER_v
                 WHERE TRUNC(ROSTER_DATE) = {yd}{cf}
             """.format(yd=yd, cf=yday_filter), yday_params)
             yrow = cursor.fetchone()
@@ -908,7 +908,7 @@ def get_hr_dashboard_stats(qdate: str = None, compc=None, brnch=None) -> dict:
                 SELECT NVL(ROSTER_SHIFT, 'Day') AS shift_name,
                     SUM(CASE WHEN IN_TIME IS NOT NULL THEN 1 ELSE 0 END) AS present,
                     COUNT(*) AS total
-                FROM DUTY_ROSTER
+                FROM DUTY_ROSTER_v
                 WHERE TRUNC(ROSTER_DATE) = {td}{cf}
                 GROUP BY NVL(ROSTER_SHIFT, 'Day')
                 ORDER BY total DESC
@@ -999,9 +999,9 @@ def get_hr_analytics(qdate: str = None, compc=None, brnch=None) -> dict:
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        # Card-level filter (restricts DUTY_ROSTER / ATTENDANCE_RECORDS rows to the
+        # Card-level filter (restricts DUTY_ROSTER_v / ATTENDANCE_RECORDS rows to the
         # selected company/branch). card_params holds ONLY the card-filter binds and
-        # is passed to every DUTY_ROSTER / ATTENDANCE_RECORDS query.
+        # is passed to every DUTY_ROSTER_v / ATTENDANCE_RECORDS query.
         card_params: dict = {}
         cf = _roster_card_filter(compc, brnch, card_params, prefix="ac")
 
@@ -1027,7 +1027,7 @@ def get_hr_analytics(qdate: str = None, compc=None, brnch=None) -> dict:
                     NVL(SUM(NVL(OT_HRS,0) + NVL(OT_MNT,0)/60.0), 0),
                     NVL(AVG(CASE WHEN IN_TIME IS NOT NULL AND OUT_TIME IS NOT NULL
                         THEN NVL(W_HRS,0) + NVL(W_MNT,0)/60.0 END), 0)
-                FROM DUTY_ROSTER
+                FROM DUTY_ROSTER_v
                 WHERE TRUNC(ROSTER_DATE) = {td}{cf}
             """.format(td=td, cf=cf), card_params)
             row = cursor.fetchone()
@@ -1056,7 +1056,7 @@ def get_hr_analytics(qdate: str = None, compc=None, brnch=None) -> dict:
             total_active = int(cursor.fetchone()[0] or 0)
             cursor.execute("""
                 SELECT COUNT(DISTINCT card_no) FROM (
-                    SELECT TO_CHAR(CARD_NO) AS card_no FROM DUTY_ROSTER
+                    SELECT TO_CHAR(CARD_NO) AS card_no FROM DUTY_ROSTER_v
                     WHERE TRUNC(ROSTER_DATE) = {td} AND IN_TIME IS NOT NULL{cf}
                     UNION
                     SELECT TO_CHAR(CARD_NO) AS card_no FROM ATTENDANCE_RECORDS
@@ -1085,7 +1085,7 @@ def get_hr_analytics(qdate: str = None, compc=None, brnch=None) -> dict:
                             WHEN IN_TIME IS NULL AND UPPER(NVL(STATUS,'')) NOT LIKE '%LEAVE%' THEN 3
                             ELSE NULL
                         END AS status_flag
-                    FROM DUTY_ROSTER
+                    FROM DUTY_ROSTER_v
                     WHERE TRUNC(ROSTER_DATE) BETWEEN {td} - 29 AND {td}{cf}
                     UNION ALL
                     SELECT TRUNC(ar.ATTENDANCE_DATE) AS d, TO_CHAR(ar.CARD_NO) AS card_no, 1 AS status_flag
@@ -1093,7 +1093,7 @@ def get_hr_analytics(qdate: str = None, compc=None, brnch=None) -> dict:
                     WHERE TRUNC(ar.ATTENDANCE_DATE) BETWEEN {td} - 29 AND {td}
                       AND ar.ENTRY_TIME IS NOT NULL{cf}
                       AND NOT EXISTS (
-                        SELECT 1 FROM DUTY_ROSTER dr
+                        SELECT 1 FROM DUTY_ROSTER_v dr
                         WHERE TO_CHAR(dr.CARD_NO) = TO_CHAR(ar.CARD_NO)
                           AND TRUNC(dr.ROSTER_DATE) = TRUNC(ar.ATTENDANCE_DATE)
                       )
@@ -1133,7 +1133,7 @@ def get_hr_analytics(qdate: str = None, compc=None, brnch=None) -> dict:
                         CASE WHEN IN_TIME IS NOT NULL AND (NVL(LATE_HRS,0)>0 OR NVL(LATE_MNT,0)>0) THEN 1 ELSE 0 END AS late_cnt,
                         CASE WHEN IN_TIME IS NULL AND UPPER(NVL(STATUS,'')) NOT LIKE '%LEAVE%' THEN 1 ELSE 0 END AS absent_cnt,
                         1 AS total_cnt
-                    FROM DUTY_ROSTER
+                    FROM DUTY_ROSTER_v
                     WHERE TRUNC(ROSTER_DATE) BETWEEN ADD_MONTHS(TRUNC({td}, 'MM'), -5) AND {td}{cf}
                     UNION ALL
                     SELECT TRUNC(ar.ATTENDANCE_DATE) AS d, 1, 0, 0, 0, 0, 1
@@ -1141,7 +1141,7 @@ def get_hr_analytics(qdate: str = None, compc=None, brnch=None) -> dict:
                     WHERE TRUNC(ar.ATTENDANCE_DATE) BETWEEN ADD_MONTHS(TRUNC({td}, 'MM'), -5) AND {td}
                       AND ar.ENTRY_TIME IS NOT NULL{cf}
                       AND NOT EXISTS (
-                        SELECT 1 FROM DUTY_ROSTER dr
+                        SELECT 1 FROM DUTY_ROSTER_v dr
                         WHERE TO_CHAR(dr.CARD_NO) = TO_CHAR(ar.CARD_NO)
                           AND TRUNC(dr.ROSTER_DATE) = TRUNC(ar.ATTENDANCE_DATE)
                       )
@@ -1195,8 +1195,8 @@ def get_bulk_attendance_summary(
     allowed_branches=None,
 ) -> list:
     """Return aggregated attendance stats for every active employee in the given
-    date range, filtered by company/branch.  Tries DUTY_ROSTER + EMPLOYEE_F join
-    first; falls back to ATTENDANCE_RECORDS if DUTY_ROSTER is absent; final
+    date range, filtered by company/branch.  Tries DUTY_ROSTER_v + EMPLOYEE_F join
+    first; falls back to ATTENDANCE_RECORDS if DUTY_ROSTER_v is absent; final
     fallback returns employee list with zero counts if both tables are missing."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -1418,14 +1418,14 @@ def get_bulk_attendance_details(
 
 
 # ─────────────────────────────────────────────────────────────────
-# MONTHLY DUTY ROSTER — read-only view of the ERP-owned DUTY_ROSTER.
-# The ERP populates DUTY_ROSTER (shift per day, in/out, late/half-day/early-out
+# MONTHLY DUTY ROSTER — read-only view of the ERP-owned DUTY_ROSTER_v.
+# The ERP populates DUTY_ROSTER_v (shift per day, in/out, late/half-day/early-out
 # flags). This only READS it for the per-employee monthly roster screen; the
-# app never writes DUTY_ROSTER.
+# app never writes DUTY_ROSTER_v.
 # ─────────────────────────────────────────────────────────────────
 
 def get_employee_roster(card_no: str, month: str = None) -> dict:
-    """Return one employee's monthly duty roster from DUTY_ROSTER.
+    """Return one employee's monthly duty roster from DUTY_ROSTER_v.
 
     card_no: full company-qualified card (e.g. 100108.1).
     month:   ROSTER_MONTH like 'MAY-26'. When omitted, the most recent month
@@ -1441,7 +1441,7 @@ def get_employee_roster(card_no: str, month: str = None) -> dict:
         # Available months (newest first), by the latest roster date in each.
         cursor.execute("""
             SELECT ROSTER_MONTH
-            FROM DUTY_ROSTER
+            FROM DUTY_ROSTER_v
             WHERE TO_CHAR(CARD_NO) = :c OR TO_CHAR(CARD_NO) = :ci
             GROUP BY ROSTER_MONTH
             ORDER BY MAX(ROSTER_DATE) DESC
@@ -1467,7 +1467,7 @@ def get_employee_roster(card_no: str, month: str = None) -> dict:
                     ABS_EARLY_OUT                      AS early_out,
                     ROSTER_REMARKS                     AS remarks,
                     UPDATED                            AS updated_by
-                FROM DUTY_ROSTER
+                FROM DUTY_ROSTER_v
                 WHERE (TO_CHAR(CARD_NO) = :c OR TO_CHAR(CARD_NO) = :ci)
                   AND ROSTER_MONTH = :m
                 ORDER BY ROSTER_DATE
@@ -1487,9 +1487,9 @@ def get_employee_roster(card_no: str, month: str = None) -> dict:
 
 
 def update_roster_entry(pk, shift=None, remarks=None, updated_by=None) -> dict:
-    """Edit one DUTY_ROSTER row by PK: shift code and/or remarks, stamping who
+    """Edit one DUTY_ROSTER_v row by PK: shift code and/or remarks, stamping who
     updated it (UPDATED). Updates ONLY by primary key — never inserts — so the
-    BEFORE-INSERT PK trigger is never involved. (DUTY_ROSTER is ERP-owned; this
+    BEFORE-INSERT PK trigger is never involved. (DUTY_ROSTER_v is ERP-owned; this
     is the one place the app is allowed to amend it, on explicit HR action.)"""
     conn = get_connection()
     cursor = conn.cursor()
@@ -1509,7 +1509,7 @@ def update_roster_entry(pk, shift=None, remarks=None, updated_by=None) -> dict:
         binds["updated"] = (updated_by or "")[:50] or None
 
         cursor.execute(
-            f"UPDATE DUTY_ROSTER SET {', '.join(sets)} WHERE DUTY_ROSTER_PK = :pk", binds
+            f"UPDATE DUTY_ROSTER_v SET {', '.join(sets)} WHERE DUTY_ROSTER_PK = :pk", binds
         )
         if cursor.rowcount == 0:
             conn.rollback()

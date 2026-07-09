@@ -1,8 +1,8 @@
 """Attendance repository — reads and writes attendance ONLY via ATTENDANCE_RECORDS.
 
-DUTY_ROSTER is an ERP-owned table that is populated automatically by the ERP;
+duty_roster_v is an ERP-owned table that is populated automatically by the ERP;
 this app no longer reads or writes it. Late / overtime / absent / shift are
-DUTY_ROSTER (ERP) concepts that ATTENDANCE_RECORDS cannot compute, so they are
+duty_roster_v (ERP) concepts that ATTENDANCE_RECORDS cannot compute, so they are
 reported as 0/empty here.
 
 Table: ATTENDANCE_RECORDS
@@ -120,7 +120,7 @@ def get_today_record(card_no: str):
     """Return today's ATTENDANCE_RECORDS row for this card, or None.
 
     ATTENDANCE_RECORDS is the app's single source of truth for attendance; the
-    ERP populates DUTY_ROSTER separately, so the app never reads/writes it.
+    ERP populates duty_roster_v separately, so the app never reads/writes it.
     """
     conn = get_connection()
     cursor = conn.cursor()
@@ -155,7 +155,7 @@ def get_open_overnight_record(card_no: str, max_window_hours: int = 16):
     that the current (after-midnight) mark should close, or None.
 
     Used when there is no record for *today*: a person on an overnight shift
-    (DUTY_ROSTER shift whose SHIFT_HEAD time_to is earlier than time_from, e.g.
+    (duty_roster_v shift whose SHIFT_HEAD time_to is earlier than time_from, e.g.
     20:00 -> 04:00) who checked in last night and is now marking their check-out
     after midnight. We only do this when the open check-in is recent (within
     max_window_hours) so a genuinely forgotten check-out becomes a fresh day,
@@ -194,7 +194,7 @@ def get_open_overnight_record(card_no: str, max_window_hours: int = 16):
             FROM SHIFT_HEAD sh
             WHERE sh.compc = (SELECT TO_NUMBER(MAX(UNIT_ID)) FROM HR_EMP_MASTER WHERE EMPCODE = :emp)
               AND sh.shift = (
-                    SELECT MIN(ROSTER_SHIFT) FROM DUTY_ROSTER
+                    SELECT MIN(ROSTER_SHIFT) FROM DUTY_ROSTER_V
                      WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
                             OR TO_CHAR(EMP_FK) = :card)
                        AND TRUNC(ROSTER_DATE) = TO_DATE(:rdate, 'YYYY-MM-DD'))
@@ -249,7 +249,7 @@ def _get_empcode(card_no: str) -> str:
 
 
 def _get_emp_fk(card_no: str):
-    """Get numeric EMP_FK (EMP_PK) for DUTY_ROSTER from EMPLOYEE_F table."""
+    """Get numeric EMP_FK (EMP_PK) for duty_roster_v from EMPLOYEE_F table."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -298,7 +298,7 @@ def insert_check_in(card_no: str, empcode: str, *,
     try:
         now = _now_hhmm()
 
-        # ATTENDANCE_RECORDS is the app's only attendance store. DUTY_ROSTER is
+        # ATTENDANCE_RECORDS is the app's only attendance store. duty_roster_v is
         # the ERP's table and is populated automatically there — we never write it.
         # MERGE prevents duplicate rows when check-in is called more than once for
         # the same card on the same day, and keeps the EARLIEST mark as ENTRY_TIME.
@@ -399,7 +399,7 @@ def update_check_out(record_id: int, entry_time: str, card_no: str = None,
                      checkout_lat=None, checkout_long=None, checkout_address=None):
     """Extend today's ATTENDANCE_RECORDS row's EXIT_TIME to the LATEST mark.
     OUT_TIME = later(existing OUT, now); ENTRY_TIME (set on the first mark) stays
-    the earliest. record_id is the ATTENDANCE_RECORDS.ID. DUTY_ROSTER is the
+    the earliest. record_id is the ATTENDANCE_RECORDS.ID. duty_roster_v is the
     ERP's table and is never written here.
 
     The location sent with the check-out is stored in the dedicated columns
