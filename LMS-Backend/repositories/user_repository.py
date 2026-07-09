@@ -615,6 +615,8 @@ def get_dashboard(card_no: str):
                     NIC_NO                              AS nic_no,
                     DESIGNATION                         AS designation,
                     DEPARTMENT                          AS department,
+                    TO_CHAR(DESIGNATION_HEAD_FK)        AS desg_fk,
+                    TO_CHAR(DEPARTMENT_HEAD_FK)         AS dept_fk,
                     TO_CHAR(COMPC)                      AS compc,
                     COMPCNM                             AS compcnm,
                     TO_CHAR(BRNCH)                      AS branch,
@@ -633,6 +635,20 @@ def get_dashboard(card_no: str):
                         result['emp_pk'] = float(result['emp_pk'])
                     except (ValueError, TypeError):
                         result['emp_pk'] = None
+                # Some EMPLOYEE_F rows carry only the FK, not the description —
+                # resolve those via the lookup tables.
+                if not result.get('designation'):
+                    result['designation'] = _safe_lookup_max(
+                        cursor, "SELECT MAX(DESG_DESC) FROM HR_DESG WHERE TO_CHAR(DESG_CD) = :v",
+                        result.get('desg_fk'), tag="dashboard.ef_designation"
+                    ) or result.get('desg_fk')
+                if not result.get('department'):
+                    result['department'] = _safe_lookup_max(
+                        cursor, "SELECT MAX(DEPT_NAME) FROM HR_DEPT WHERE TO_CHAR(DEPT_NO) = :v",
+                        result.get('dept_fk'), tag="dashboard.ef_department"
+                    ) or result.get('dept_fk')
+                result.pop('desg_fk', None)
+                result.pop('dept_fk', None)
                 balance = None
                 try:
                     cursor.execute(
