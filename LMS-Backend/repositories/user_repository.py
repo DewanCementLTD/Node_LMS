@@ -1041,12 +1041,15 @@ def _type_matches(t: dict, value) -> bool:
 # Strictly ALL_LEAVE_BAL_V rows — real balances only, negatives included.
 # ===============================
 
-# ALL_LEAVE_BAL_V keys employees by numeric EMP_PK/CARD_NO, but the app's card
-# identifier is a dotted string ('50202309.1.2') — binding it straight into the
-# NUMBER column raises ORA-01722. Resolve it to EMP_PK via EMPLOYEE_F instead.
-_BAL_EMP_FILTER = """EMP_PK IN (
-        SELECT e.EMP_PK FROM EMPLOYEE_F e
-        WHERE TO_CHAR(e.CARD_NO) = :card 
+# ALL_LEAVE_BAL_V keys employees by numeric CARD_NO (the base card without the
+# dotted suffix, i.e. EMPLOYEE_F.CARD_NOW), but the app's card identifier is a
+# dotted string ('50202309.1.2') — binding it straight into the NUMBER column
+# raises ORA-01722. Resolve it via EMPLOYEE_F.CARD_NOW. Do NOT match on EMP_PK:
+# it is not unique in the view (e.g. EMP_PK 10 maps to three different people),
+# which used to surface other employees' balances.
+_BAL_EMP_FILTER = """CARD_NO IN (
+        SELECT e.CARD_NOW FROM EMPLOYEE_F e
+        WHERE TO_CHAR(e.CARD_NO) = :card
     )"""
 
 

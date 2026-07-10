@@ -165,6 +165,7 @@ export function Sidebar() {
               width={36}
               height={36}
               className="shrink-0"
+              style={{ width: 36, height: "auto" }}
             />
             {!collapsed && (
               <h1 className="text-xl font-bold bg-linear-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent truncate">

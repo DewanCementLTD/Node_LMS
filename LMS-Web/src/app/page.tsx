@@ -70,7 +70,7 @@ export default function LoginPage() {
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
         <div className="relative z-10 flex flex-col justify-center px-16 text-white">
           <div className="flex items-center gap-4 mb-8">
-            <Image src="/YDC-HD2.png" alt="LMS Logo" width={64} height={64} />
+            <Image src="/YDC-HD2.png" alt="LMS Logo" width={64} height={64} style={{ width: 64, height: "auto" }} />
             <h1 className="text-3xl font-bold">LMS Portal</h1>
           </div>
           <h2 className="text-4xl font-bold leading-tight mb-4">
@@ -102,7 +102,7 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-3 mb-8 justify-center">
-            <Image src="/YDC-HD2.png" alt="LMS Logo" width={48} height={48} />
+            <Image src="/YDC-HD2.png" alt="LMS Logo" width={48} height={48} style={{ width: 48, height: "auto" }} />
             <h1 className="text-2xl font-bold text-white">LMS Portal</h1>
           </div>
 
