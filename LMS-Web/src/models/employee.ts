@@ -33,8 +33,11 @@ export interface EmployeeProfile {
   emp_status?: string;
   salary?: number;
   type?: string;
-  compc?: number;
-  brnch?: number;
+  compc?: number | string;
+  brnch?: number | string;
+  compcnm?: string;
+  brnchnm?: string;
+  address?: string;
 }
 
 export interface EmployeeSearchResult {

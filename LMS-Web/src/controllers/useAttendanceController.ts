@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { fetchAttendanceRange, fetchAttendanceSummary } from "@/services/attendanceService";
-import { fetchDashboard } from "@/services/authService";
+import { fetchDashboard, fetchProfile } from "@/services/authService";
 import { AttendanceRecord, AttendanceSummary } from "@/models/attendance";
+import { EmployeeProfile } from "@/models/employee";
 
 export function useAttendanceController() {
   const { user } = useAuth();
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [profile, setProfile] = useState<EmployeeProfile | null>(null);
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,10 +28,14 @@ export function useAttendanceController() {
     setLoading(true);
     setError(null);
     try {
-      const [reportRes, dashData] = await Promise.all([
+      const [reportRes, dashData, profileData] = await Promise.all([
         fetchAttendanceRange(user.card_no, dateRange.from, dateRange.to),
         fetchDashboard(user.card_no),
+        // Profile carries EMP#, designation, department, mobile and status for
+        // the printed timesheet header — non-fatal if unavailable.
+        fetchProfile(user.card_no).catch(() => null),
       ]);
+      setProfile(profileData);
       // Derive day_name from roster_date when backend doesn't supply it
       const items = (reportRes.items || []).map((r) => ({
         ...r,
@@ -64,6 +70,7 @@ export function useAttendanceController() {
 
   return {
     records,
+    profile,
     summary,
     loading,
     error,

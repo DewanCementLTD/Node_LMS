@@ -85,8 +85,10 @@ class LeaveBalanceResponse(BaseModel):
 
 
 class LeaveApplyRequest(BaseModel):
-    # Flutter sends: type (leave code), from_date, to_date, reason, half_day
-    # card_no comes from the URL path parameter
+    # Flutter sends: type (leave code), from_date, to_date, reason, half_day,
+    # and optionally from_time/to_time for half-day. It does NOT send
+    # compc/brnch — those are resolved from the employee's EMPLOYEE_F row, so
+    # they must stay optional here. card_no comes from the URL path parameter.
     type: Optional[str] = None           # Flutter field name
     leave_type_id: Optional[int] = None  # numeric FK (if known)
     from_date: str
@@ -94,8 +96,10 @@ class LeaveApplyRequest(BaseModel):
     reason: str
     half_day: Optional[bool] = False
     half_day_session: Optional[str] = None  # "first" | "second"
-    compc: int
-    brnch: int
+    from_time: Optional[str] = None      # Flutter half-day 'HH:MM'
+    to_time: Optional[str] = None        # Flutter half-day 'HH:MM'
+    compc: Optional[int] = None
+    brnch: Optional[int] = None
     emp_name: str = ''
 
 
@@ -112,14 +116,28 @@ class LeaveStatusResponse(BaseModel):
 
 class ProfileResponse(BaseModel):
     emp_name: str
-    department: Optional[str]
-    designation: Optional[str]
-    email_address: Optional[str]
-    mobile_no: Optional[str]
-    date_of_birth: Optional[str]
-    date_of_join: Optional[str]
-    father_name: Optional[str]
-    nic_no: Optional[str]
+    department: Optional[str] = None
+    designation: Optional[str] = None
+    email_address: Optional[str] = None
+    mobile_no: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    date_of_join: Optional[str] = None
+    father_name: Optional[str] = None
+    nic_no: Optional[str] = None
+    # response_model strips anything not listed here — the web profile page and
+    # the printed timesheet header need these too.
+    card_no: Optional[str] = None
+    emp_no: Optional[str] = None
+    emp_code: Optional[str] = None
+    emp_status: Optional[str] = None
+    type: Optional[str] = None
+    address: Optional[str] = None
+    compc: Optional[str] = None
+    brnch: Optional[str] = None
+    compcnm: Optional[str] = None
+    brnchnm: Optional[str] = None
+    hod1nm: Optional[str] = None
+    hod2nm: Optional[str] = None
 
 
 # Attendance models moved to models/attendance_models.py

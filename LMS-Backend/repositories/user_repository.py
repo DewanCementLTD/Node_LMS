@@ -815,6 +815,85 @@ def get_user_profile(card_no: str):
         columns = []
         resolved_card_no = card_no
 
+        # Step 0: EMPLOYEE_F by exact CARD_NO — the person's own row, complete with
+        # mobile/email/status/type and readable designation/department.
+        try:
+            cursor.execute("""
+                SELECT
+                    EMP_NO                                AS emp_no,
+                    EMP_NAME                              AS emp_name,
+                    FATHER_NAME                           AS father_name,
+                    TO_CHAR(CARD_NO)                      AS card_no,
+                    TO_CHAR(DATE_OF_BIRTH, 'YYYY-MM-DD')  AS date_of_birth,
+                    TO_CHAR(DATE_OF_JOIN, 'YYYY-MM-DD')   AS date_of_join,
+                    NIC_NO                                AS nic_no,
+                    TO_CHAR(MOBILE_NO)                    AS mobile_no,
+                    EMAIL_ADDRESS                         AS email,
+                    ADDRESS                               AS address,
+                    DESIGNATION                           AS designation,
+                    DEPARTMENT                            AS department,
+                    TO_CHAR(DESIGNATION_HEAD_FK)          AS desg_fk,
+                    TO_CHAR(DEPARTMENT_HEAD_FK)           AS dept_fk,
+                    ACTIVE                                AS active,
+                    TYPE                                  AS emp_type,
+                    TO_CHAR(COMPC)                        AS compc,
+                    COMPCNM                               AS compcnm,
+                    TO_CHAR(BRNCH)                        AS brnch,
+                    BRNCHNM                               AS brnchnm,
+                    TO_CHAR(HOD1)                         AS hod1,
+                    TO_CHAR(HOD2)                         AS hod2,
+                    HOD_NM                                AS hod_nm,
+                    SALARY                                AS salary
+                FROM EMPLOYEE_F
+                WHERE TO_CHAR(CARD_NO) = :card
+            """, {"card": card_no})
+            ef = cursor.fetchone()
+            if ef:
+                raw = dict(zip([c[0].lower() for c in cursor.description], ef))
+                designation = raw.get('designation') or _safe_lookup_max(
+                    cursor, "SELECT MAX(DESG_DESC) FROM HR_DESG WHERE TO_CHAR(DESG_CD) = :v",
+                    raw.get('desg_fk'), tag="profile.ef_designation"
+                ) or raw.get('desg_fk')
+                department = raw.get('department') or _safe_lookup_max(
+                    cursor, "SELECT MAX(DEPT_NAME) FROM HR_DEPT WHERE TO_CHAR(DEPT_NO) = :v",
+                    raw.get('dept_fk'), tag="profile.ef_department"
+                ) or raw.get('dept_fk')
+                active = str(raw.get('active') or '').strip().upper()
+                return {
+                    'emp_pk':        raw.get('emp_no'),
+                    'emp_no':        raw.get('emp_no'),
+                    'emp_code':      raw.get('emp_no'),
+                    'emp_name':      raw.get('emp_name'),
+                    'father_name':   raw.get('father_name'),
+                    'card_no':       raw.get('card_no') or card_no,
+                    'gender':        None,
+                    'date_of_birth': raw.get('date_of_birth'),
+                    'date_of_join':  raw.get('date_of_join'),
+                    'mobile_no':     raw.get('mobile_no'),
+                    'email':         raw.get('email'),
+                    'email_address': raw.get('email'),
+                    'address':       raw.get('address'),
+                    'compc':         raw.get('compc'),
+                    'brnch':         raw.get('brnch'),
+                    'compcnm':       raw.get('compcnm'),
+                    'brnchnm':       raw.get('brnchnm'),
+                    'hod1':          raw.get('hod1'),
+                    'hod2':          raw.get('hod2'),
+                    'hod1nm':        raw.get('hod_nm'),
+                    'hod2nm':        None,
+                    'emp_status':    'A' if active.startswith('Y') else 'D',
+                    'nic_no':        raw.get('nic_no'),
+                    'salary':        raw.get('salary'),
+                    'type':          raw.get('emp_type'),
+                    'designation':   designation,
+                    'department':    department,
+                    'nic_exp_date':  None,
+                    'eobi_no':       None,
+                    'uic_card_no':   None,
+                }
+        except Exception as e:
+            print(f"[PROFILE] EMPLOYEE_F direct lookup failed for {card_no}: {e}")
+
         # Primary attempt: join EMPLOYEE_F only to resolve CARD_NO — select no view-computed columns
         try:
             cursor.execute("""
@@ -914,8 +993,8 @@ def get_user_profile(card_no: str):
             'email':         raw.get('email'),
             'email_address': raw.get('email'),
             'address':       raw.get('address'),
-            'compc':         raw.get('unit_id'),
-            'brnch':         raw.get('location'),
+            'compc':         str(raw.get('unit_id')) if raw.get('unit_id') is not None else None,
+            'brnch':         str(raw.get('location')) if raw.get('location') is not None else None,
             'hod1':          raw.get('hod1'),
             'hod2':          raw.get('hod2'),
             'emp_status':    raw.get('status'),
@@ -1154,11 +1233,13 @@ def apply_leave(card_no: str,
                 from_date: str,
                 to_date: str,
                 reason: str,
-                compc: int,
-                brnch: int,
-                emp_name: str,
+                compc: int = None,
+                brnch: int = None,
+                emp_name: str = '',
                 half_day: bool = False,
-                half_day_session: str = None):
+                half_day_session: str = None,
+                from_time: str = None,
+                to_time: str = None):
     """leave_type may be the code ('ML'), the numeric PK, or the description —
     ALL_LEAVE_BAL_V.leave_type is a code string, so never force it to int
     (int('ML') / comparing 'ML' to a number caused ORA-01722)."""
@@ -1174,9 +1255,12 @@ def apply_leave(card_no: str,
     d2 = datetime.strptime(to_date, "%Y-%m-%d")
     leave_days = 0.5 if half_day else (d2 - d1).days + 1
 
-    # Append half-day session info to reason
+    # Append half-day session info to reason. Flutter sends explicit times;
+    # the web sends a first/second session flag.
     if half_day:
-        if half_day_session == "second":
+        if from_time and to_time:
+            reason = f"{reason} [Half Day: {from_time}-{to_time}]"
+        elif half_day_session == "second":
             reason = f"{reason} [Second Half: 13:00-18:00]"
         else:
             reason = f"{reason} [First Half: 09:30-13:00]"

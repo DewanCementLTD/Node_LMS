@@ -81,11 +81,13 @@ def apply_leave_service(card_no: str,
                         from_date: str,
                         to_date: str,
                         reason: str,
-                        compc: int,
-                        brnch: int,
-                        emp_name: str,
+                        compc: int = None,
+                        brnch: int = None,
+                        emp_name: str = '',
                         half_day: bool = False,
-                        half_day_session: str = None):
+                        half_day_session: str = None,
+                        from_time: str = None,
+                        to_time: str = None):
 
     return apply_leave(
         card_no,
@@ -98,6 +100,8 @@ def apply_leave_service(card_no: str,
         emp_name,
         half_day=half_day,
         half_day_session=half_day_session,
+        from_time=from_time,
+        to_time=to_time,
     )
 
 

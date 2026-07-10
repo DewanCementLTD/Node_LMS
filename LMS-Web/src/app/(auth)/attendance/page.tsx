@@ -14,7 +14,7 @@ import { Clock, Search, RefreshCw, Timer, AlertTriangle, Printer, Download } fro
 
 export default function AttendancePage() {
   const { user } = useAuth();
-  const { records, summary, loading, dateRange, setDateRange, refresh } =
+  const { records, profile, summary, loading, dateRange, setDateRange, refresh } =
     useAttendanceController();
 
   function downloadCSV() {
@@ -61,15 +61,20 @@ export default function AttendancePage() {
               onClick={() =>
                 printTimesheetWindow(
                   {
-                    emp_name: user?.emp_name || "",
-                    card_no: user?.card_no || "",
+                    emp_name: profile?.emp_name || user?.emp_name || "",
+                    card_no: profile?.card_no || user?.card_no || "",
+                    emp_no: profile?.emp_no || profile?.emp_code || "",
+                    designation: profile?.designation || "",
+                    department: profile?.department || "",
+                    mobile: profile?.mobile_no || "",
+                    status: profile?.emp_status || "",
                   },
                   records,
                   summary,
                   dateRange.from,
                   dateRange.to,
                   "print",
-                  user?.selected_company?.name,
+                  user?.selected_company?.name || profile?.compcnm,
                 )
               }
             >

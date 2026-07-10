@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { SidebarProvider, useSidebar } from "@/components/layout/sidebar-context";
 import { Spinner } from "@/components/ui/Spinner";
@@ -12,10 +12,47 @@ import { Spinner } from "@/components/ui/Spinner";
 // admins should still be able to view the HR dashboard there.
 const EMPLOYEE_ONLY_ROUTES = ["/leave", "/attendance", "/profile"];
 
+// Auto-logout after this much user inactivity (no mouse/keyboard/touch/scroll).
+const IDLE_LOGOUT_MS = 5 * 60 * 1000;
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
+  const { user, setUser, isLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+
+  // Session idle timeout: any activity rearms the timer; 5 silent minutes logs out.
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastArmed = useRef(0);
+  useEffect(() => {
+    if (!user) return;
+
+    const logout = () => {
+      localStorage.removeItem("lms_user");
+      setUser(null);
+      router.push("/");
+    };
+    const arm = () => {
+      // Activity events (mousemove especially) fire continuously — only rebuild
+      // the timeout at most once per second.
+      const now = Date.now();
+      if (now - lastArmed.current < 1000) return;
+      lastArmed.current = now;
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      idleTimer.current = setTimeout(logout, IDLE_LOGOUT_MS);
+    };
+
+    const events: (keyof WindowEventMap)[] = [
+      "mousemove", "mousedown", "keydown", "touchstart", "scroll", "click",
+    ];
+    events.forEach((e) => window.addEventListener(e, arm, { passive: true }));
+    arm();
+
+    return () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      lastArmed.current = 0;
+      events.forEach((e) => window.removeEventListener(e, arm));
+    };
+  }, [user, setUser, router]);
 
   useEffect(() => {
     if (isLoading) return;

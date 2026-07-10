@@ -142,6 +142,8 @@ def apply_leave(card_no: str, request: LeaveApplyRequest):
         request.emp_name,
         half_day=request.half_day or False,
         half_day_session=request.half_day_session,
+        from_time=request.from_time,
+        to_time=request.to_time,
     )
 
     if result["status"] == "error":
