@@ -71,6 +71,21 @@ def get_location_history(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/location/my-history/{card_no}")
+def get_my_location_history(
+    card_no: str,
+    date: str = Query(..., description="YYYY-MM-DD"),
+):
+    """Self-service: an employee's own tracked points for one date (used by
+    the mobile app's Location Tracking Report screen — no HR gate, the data
+    is keyed by the caller's own card number)."""
+    try:
+        points = fetch_location_history(card_no, date)
+        return {"body": {"card_no": card_no, "date": date, "points": points}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/location/report/trail")
 def get_location_trail_report_api(
     from_date: str = Query(..., description="YYYY-MM-DD"),

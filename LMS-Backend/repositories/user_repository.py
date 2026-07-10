@@ -803,6 +803,53 @@ def _safe_lookup_max(cursor, sql: str, value, tag: str = ""):
 # USER PROFILE
 # ===============================
 
+def _get_emergency_contact(cursor, card_no: str):
+    """One emergency-contact row per employee from LMS_EMERGENCY_CONTACT.
+    Returns {name, relationship, phone} or None. Never raises."""
+    try:
+        cursor.execute("""
+            SELECT NAME, RELATIONSHIP, PHONE
+            FROM LMS_EMERGENCY_CONTACT WHERE CARD_NO = :card
+        """, {"card": str(card_no)})
+        r = cursor.fetchone()
+        if r and (r[0] or r[2]):
+            return {"name": r[0] or "", "relationship": r[1] or "", "phone": r[2] or ""}
+    except Exception as e:
+        print(f"[PROFILE] emergency contact lookup failed for {card_no}: {e}")
+    return None
+
+
+def save_emergency_contact(card_no: str, name: str, relationship: str, phone: str):
+    """Upsert the employee's emergency contact into LMS_EMERGENCY_CONTACT."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            MERGE INTO LMS_EMERGENCY_CONTACT t
+            USING (SELECT :card AS CARD_NO FROM DUAL) s
+            ON (t.CARD_NO = s.CARD_NO)
+            WHEN MATCHED THEN UPDATE SET
+                t.NAME = :name, t.RELATIONSHIP = :rel, t.PHONE = :phone,
+                t.UPDATED_AT = SYSDATE
+            WHEN NOT MATCHED THEN INSERT (CARD_NO, NAME, RELATIONSHIP, PHONE, UPDATED_AT)
+                VALUES (:card, :name, :rel, :phone, SYSDATE)
+        """, {
+            "card": str(card_no)[:30],
+            "name": str(name or "")[:200],
+            "rel": str(relationship or "")[:100],
+            "phone": str(phone or "")[:50],
+        })
+        conn.commit()
+        return {"status": "success", "message": "Emergency contact saved"}
+    except Exception as e:
+        conn.rollback()
+        print(f"[PROFILE] emergency contact save failed for {card_no}: {e}")
+        return {"status": "error", "message": str(e)}
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def get_user_profile(card_no: str):
     """Return EMPLOYEE_F profile from HR_EMP_MASTER (primary) + EMPLOYEE_F (card_no only).
     card_no like '100001.1' lives in EMPLOYEE_F.CARD_NO (numeric), not in ATDTCARD#.
@@ -820,6 +867,7 @@ def get_user_profile(card_no: str):
         try:
             cursor.execute("""
                 SELECT
+                    TO_CHAR(EMP_PK)                       AS emp_pk,
                     EMP_NO                                AS emp_no,
                     EMP_NAME                              AS emp_name,
                     FATHER_NAME                           AS father_name,
@@ -827,15 +875,23 @@ def get_user_profile(card_no: str):
                     TO_CHAR(DATE_OF_BIRTH, 'YYYY-MM-DD')  AS date_of_birth,
                     TO_CHAR(DATE_OF_JOIN, 'YYYY-MM-DD')   AS date_of_join,
                     NIC_NO                                AS nic_no,
+                    TO_CHAR(NIC_EXP_DATE, 'YYYY-MM-DD')   AS nic_exp_date,
+                    EOBI_NO                               AS eobi_no,
+                    UIC_CARD_NO                           AS uic_card_no,
                     TO_CHAR(MOBILE_NO)                    AS mobile_no,
                     EMAIL_ADDRESS                         AS email,
                     ADDRESS                               AS address,
                     DESIGNATION                           AS designation,
                     DEPARTMENT                            AS department,
+                    CADRE                                 AS cadre,
+                    LOCATION                              AS location,
                     TO_CHAR(DESIGNATION_HEAD_FK)          AS desg_fk,
                     TO_CHAR(DEPARTMENT_HEAD_FK)           AS dept_fk,
                     ACTIVE                                AS active,
                     TYPE                                  AS emp_type,
+                    TO_CHAR(CONFIRMATION_DATE,'YYYY-MM-DD') AS confirmation_date,
+                    MANAGER_ABOVE                         AS manager_above,
+                    COMPANY_ACCOMODATION                  AS company_accomodation,
                     TO_CHAR(COMPC)                        AS compc,
                     COMPCNM                               AS compcnm,
                     TO_CHAR(BRNCH)                        AS brnch,
@@ -860,7 +916,7 @@ def get_user_profile(card_no: str):
                 ) or raw.get('dept_fk')
                 active = str(raw.get('active') or '').strip().upper()
                 return {
-                    'emp_pk':        raw.get('emp_no'),
+                    'emp_pk':        raw.get('emp_pk'),
                     'emp_no':        raw.get('emp_no'),
                     'emp_code':      raw.get('emp_no'),
                     'emp_name':      raw.get('emp_name'),
@@ -877,19 +933,26 @@ def get_user_profile(card_no: str):
                     'brnch':         raw.get('brnch'),
                     'compcnm':       raw.get('compcnm'),
                     'brnchnm':       raw.get('brnchnm'),
+                    'location':      raw.get('location') or raw.get('brnchnm'),
                     'hod1':          raw.get('hod1'),
                     'hod2':          raw.get('hod2'),
+                    'hod_nm':        raw.get('hod_nm'),
                     'hod1nm':        raw.get('hod_nm'),
                     'hod2nm':        None,
                     'emp_status':    'A' if active.startswith('Y') else 'D',
                     'nic_no':        raw.get('nic_no'),
-                    'salary':        raw.get('salary'),
+                    'salary':        float(raw['salary']) if raw.get('salary') is not None else None,
                     'type':          raw.get('emp_type'),
+                    'cadre':         raw.get('cadre'),
                     'designation':   designation,
                     'department':    department,
-                    'nic_exp_date':  None,
-                    'eobi_no':       None,
-                    'uic_card_no':   None,
+                    'nic_exp_date':  raw.get('nic_exp_date'),
+                    'eobi_no':       raw.get('eobi_no'),
+                    'uic_card_no':   raw.get('uic_card_no'),
+                    'confirmation_date': raw.get('confirmation_date'),
+                    'manager_above_sts': raw.get('manager_above'),
+                    'company_accomodation': raw.get('company_accomodation'),
+                    'emergency_contact': _get_emergency_contact(cursor, raw.get('card_no') or card_no),
                 }
         except Exception as e:
             print(f"[PROFILE] EMPLOYEE_F direct lookup failed for {card_no}: {e}")
@@ -1036,6 +1099,7 @@ def get_user_profile(card_no: str):
             cursor, "SELECT MAX(NAME) FROM HR_EMP_MASTER WHERE EMPCODE = TO_CHAR(:v)",
             result.get('hod2'), tag="profile.hod2nm"
         )
+        result['emergency_contact'] = _get_emergency_contact(cursor, resolved_card_no)
 
         return result
 

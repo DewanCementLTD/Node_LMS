@@ -12,6 +12,7 @@ from models.auth_models import (
     ProfileResponse,
     ChangePasswordRequest,
     MessageResponse,
+    EmergencyContactRequest,
 )
 
 from services.auth_service import (
@@ -181,6 +182,21 @@ def profile(card_no: str):
                             detail="User not found")
 
     return data
+
+
+# ===================================
+# EMERGENCY CONTACT (mobile app profile)
+# ===================================
+
+@router.post("/emergency-contact/{card_no}", response_model=MessageResponse)
+def save_emergency_contact_endpoint(card_no: str, request: EmergencyContactRequest):
+    from repositories.user_repository import save_emergency_contact
+    result = save_emergency_contact(
+        card_no, request.name, request.relationship, request.phone,
+    )
+    if result["status"] == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return MessageResponse(status="SUCCESS", message=result["message"])
 
 
 # ===================================

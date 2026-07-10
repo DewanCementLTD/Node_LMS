@@ -124,20 +124,43 @@ class ProfileResponse(BaseModel):
     date_of_join: Optional[str] = None
     father_name: Optional[str] = None
     nic_no: Optional[str] = None
-    # response_model strips anything not listed here — the web profile page and
-    # the printed timesheet header need these too.
+    # response_model strips anything not listed here — the web profile page,
+    # the printed timesheet header, AND the mobile app's EnhancedProfileModel
+    # all read these.
     card_no: Optional[str] = None
+    emp_pk: Optional[str] = None
     emp_no: Optional[str] = None
     emp_code: Optional[str] = None
     emp_status: Optional[str] = None
     type: Optional[str] = None
+    cadre: Optional[str] = None
     address: Optional[str] = None
+    location: Optional[str] = None
     compc: Optional[str] = None
     brnch: Optional[str] = None
     compcnm: Optional[str] = None
     brnchnm: Optional[str] = None
+    hod1: Optional[str] = None
+    hod2: Optional[str] = None
+    hod_nm: Optional[str] = None
     hod1nm: Optional[str] = None
     hod2nm: Optional[str] = None
+    email: Optional[str] = None
+    gender: Optional[str] = None
+    salary: Optional[float] = None
+    nic_exp_date: Optional[str] = None
+    eobi_no: Optional[str] = None
+    uic_card_no: Optional[str] = None
+    confirmation_date: Optional[str] = None
+    manager_above_sts: Optional[str] = None
+    company_accomodation: Optional[str] = None
+    emergency_contact: Optional[dict] = None
+
+
+class EmergencyContactRequest(BaseModel):
+    name: str
+    relationship: str = ''
+    phone: str = ''
 
 
 # Attendance models moved to models/attendance_models.py
