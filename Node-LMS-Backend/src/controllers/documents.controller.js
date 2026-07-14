@@ -57,17 +57,18 @@ const removeOtherVariants = (exts, targetOf, targetAbsPath) => {
 // ---------------------------------------------------------------------------
 
 // GET /documents
-export const listEmployeeDocuments = async (req, res, next) => {
+export const listEmployeeDocuments = async (req, res) => {
   try {
     const { empcode } = res.locals.validated.query;
     res.json({ items: await listDocuments(empcode) });
+    // res.json( {"1": 12} );
   } catch (err) {
-    next(err);
+    console.error('Error listing employee documents:', err);
   }
 };
 
 // POST /documents  (multipart/form-data)
-export const uploadDocument = async (req, res, next) => {
+export const uploadDocument = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ detail: 'file is required' });

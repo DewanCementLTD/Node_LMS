@@ -295,6 +295,7 @@ export const getEmployeePhotoAbs = async (empcode) => {
     const rel = r ? String(r[0] ?? '').trim() : '';
     if (!rel) return null;
     const absPath = path.isAbsolute(rel) ? rel : path.join(DOCS_BASE, rel);
+    console.log(absPath);
     return fs.existsSync(absPath) && fs.statSync(absPath).isFile() ? absPath : null;
   } finally {
     await connection?.close();

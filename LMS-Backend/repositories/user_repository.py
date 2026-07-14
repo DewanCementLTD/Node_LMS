@@ -805,12 +805,16 @@ def _safe_lookup_max(cursor, sql: str, value, tag: str = ""):
 
 def _get_emergency_contact(cursor, card_no: str):
     """One emergency-contact row per employee from LMS_EMERGENCY_CONTACT.
-    Returns {name, relationship, phone} or None. Never raises."""
+    Matches the full dotted card ('50201552.2.3') OR its integer prefix
+    ('50201552') so a save under either representation is found. Never raises."""
     try:
+        prefix = str(card_no).split(".")[0] if "." in str(card_no) else str(card_no)
         cursor.execute("""
             SELECT NAME, RELATIONSHIP, PHONE
-            FROM LMS_EMERGENCY_CONTACT WHERE CARD_NO = :card
-        """, {"card": str(card_no)})
+            FROM LMS_EMERGENCY_CONTACT
+            WHERE CARD_NO = :card OR CARD_NO = :prefix
+            ORDER BY UPDATED_AT DESC
+        """, {"card": str(card_no), "prefix": prefix})
         r = cursor.fetchone()
         if r and (r[0] or r[2]):
             return {"name": r[0] or "", "relationship": r[1] or "", "phone": r[2] or ""}

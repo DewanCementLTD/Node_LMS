@@ -19,11 +19,25 @@ const stats = {
 const streams = {};
 
 function getStream(prefix) {
-  if (!streams[prefix]) {
-    const filePath = path.join(LOGS_DIR, `${prefix}.log`);
-    streams[prefix] = fs.createWriteStream(filePath, { flags: 'a' });
+  // Ensure the logs directory exists
+  if (!fs.existsSync(LOGS_DIR)) {
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
   }
-  return streams[prefix];
+
+  // Make the filename safe for Windows/Linux/macOS
+  const safePrefix = String(prefix).replace(/[<>:"/\\|?*]/g, "_");
+
+  if (!streams[safePrefix]) {
+    const filePath = path.join(LOGS_DIR, `${safePrefix}.log`);
+    streams[safePrefix] = fs.createWriteStream(filePath, { flags: "a" });
+
+    // Prevent an unhandled stream error from crashing the process
+    streams[safePrefix].on("error", (err) => {
+      console.error(`Log stream error (${filePath}):`, err);
+    });
+  }
+
+  return streams[safePrefix];
 }
 
 function routePrefix(req) {

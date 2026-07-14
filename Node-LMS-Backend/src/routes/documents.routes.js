@@ -38,8 +38,8 @@ const router = Router();
 // ---------------------------------------------------------------------------
 // Employee documents (HR_DOCUMENT rows + files under EMP_DOCS)
 // ---------------------------------------------------------------------------
-router.get('/', validate(listDocumentsSchema), requireHrAdmin, listEmployeeDocuments); // http://localhost:8000/documents?empcode=00000031&admin_card_no=100001.1
-router.post('/', uploadSingleFile, validate(uploadDocumentSchema), requireHrAdmin, uploadDocument); // http://localhost:8000/documents?admin_card_no=100001.1  Body (form-data): empcode=00000031, d_type=CNIC, doc_name=My CNIC, remarks=front side, file=<binary>
+router.get('/', validate(listDocumentsSchema), requireHrAdmin, listEmployeeDocuments); // [x] http://localhost:8000/documents?empcode=100660.1&admin_card_no=100001.1
+router.post('/', uploadSingleFile, validate(uploadDocumentSchema), requireHrAdmin, uploadDocument); // [*] http://localhost:8000/documents?admin_card_no=100001.1  Body (form-data): empcode:100660.1   d_type:CNIC   doc_name:Cnic Back  remarks:Uploaded from Postman, file=<binary>
 
 // ---------------------------------------------------------------------------
 // Employee photo (HR-managed; path saved to HR_EMP_MASTER.PATH)
