@@ -25,7 +25,7 @@ import { getDirectConnection } from '../config/database.js';
 // Root directory for all employee documents. Overridable via EMP_DOCS_ROOT.
 // Default: C:\Erp_Systems\HRMS_LMS_APP\EMP_DOCS — same location the FastAPI
 // backend writes to, so both servers see the same files.
-export const DOCS_ROOT = process.env.EMP_DOCS_ROOT || 'C:\\Erp_Systems\\HRMS_LMS_APP\\EMP_DOCS';
+export const DOCS_ROOT = process.env.EMP_DOCS_ROOT || 'E:\\DCL_LMS\\HRMS_COMPLETE\\Node-LMS-Backend\\EMP_PHOTOS';
 // Parent of EMP_DOCS — relative paths stored in HR_DOCUMENT.IMG_NM resolve against this.
 export const DOCS_BASE = path.dirname(DOCS_ROOT);
 

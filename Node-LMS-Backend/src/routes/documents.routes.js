@@ -44,25 +44,25 @@ router.post('/', uploadSingleFile, validate(uploadDocumentSchema), requireHrAdmi
 // ---------------------------------------------------------------------------
 // Employee photo (HR-managed; path saved to HR_EMP_MASTER.PATH)
 // ---------------------------------------------------------------------------
-router.get('/employee-photo', validate(employeePhotoSchema), requireHrAdmin, getEmployeePhoto); // http://localhost:8000/documents/employee-photo?admin_card_no=100001.1&empcode=00000031
-router.post('/employee-photo', uploadSingleFile, validate(employeePhotoSchema), requireHrAdmin, uploadEmployeePhoto); // http://localhost:8000/documents/employee-photo?admin_card_no=100001.1&empcode=00000031  Body (form-data): file=<image>
+router.get('/employee-photo', validate(employeePhotoSchema), requireHrAdmin, getEmployeePhoto); // [*] http://localhost:8000/documents/employee-photo?admin_card_no=100001.1&empcode=100660.1
+router.post('/employee-photo', uploadSingleFile, validate(employeePhotoSchema), requireHrAdmin, uploadEmployeePhoto);  // [*] http://localhost:8000/documents/employee-photo?admin_card_no=100001.1&empcode=100660.1  Body (form-data): file=<image>
 
 // ---------------------------------------------------------------------------
 // My photo (employee self-service — no HR admin required)
 // ---------------------------------------------------------------------------
-router.get('/my-photo', validate(myPhotoSchema), getMyPhoto); // http://localhost:8000/documents/my-photo?card_no=100011.3
-router.post('/my-photo', uploadSingleFile, validate(myPhotoSchema), uploadMyPhoto); // http://localhost:8000/documents/my-photo?card_no=100011.3  Body (form-data): file=<image>
+router.get('/my-photo', validate(myPhotoSchema), getMyPhoto); // [*] http://localhost:8000/documents/my-photo?card_no=100660.1
+router.post('/my-photo', uploadSingleFile, validate(myPhotoSchema), uploadMyPhoto); // [*] http://localhost:8000/documents/my-photo?card_no=100660.1  Body (form-data): file=<image>
 
 // ---------------------------------------------------------------------------
 // Company logo (GET is public branding; POST is HR-admin gated)
 // ---------------------------------------------------------------------------
-router.get('/company-logo', validate(companyLogoGetSchema), getCompanyLogo); // http://localhost:8000/documents/company-logo?compc=1
-router.post('/company-logo', uploadSingleFile, validate(companyLogoUploadSchema), requireHrAdmin, uploadCompanyLogo); // http://localhost:8000/documents/company-logo?admin_card_no=100001.1&compc=1  Body (form-data): file=<image>
+router.get('/company-logo', validate(companyLogoGetSchema), getCompanyLogo); // [-] http://localhost:8000/documents/company-logo?compc=1
+router.post('/company-logo', uploadSingleFile, validate(companyLogoUploadSchema), requireHrAdmin, uploadCompanyLogo); // [-] http://localhost:8000/documents/company-logo?admin_card_no=100001.1&compc=1  Body (form-data): file=<image>
 
 // ---------------------------------------------------------------------------
 // Single document by id (download / delete) — keep AFTER the literal paths
 // ---------------------------------------------------------------------------
-router.get('/:doc_id/download', validate(downloadDocumentSchema), requireHrAdmin, downloadDocument); // http://localhost:8000/documents/5/download?admin_card_no=100001.1&inline=false
-router.delete('/:doc_id', validate(deleteDocumentSchema), requireHrAdmin, removeDocument); // http://localhost:8000/documents/5?admin_card_no=100001.1
+router.get('/:doc_id/download', validate(downloadDocumentSchema), requireHrAdmin, downloadDocument); // [-] http://localhost:8000/documents/5/download?admin_card_no=100001.1&inline=false
+router.delete('/:doc_id', validate(deleteDocumentSchema), requireHrAdmin, removeDocument); // [-] http://localhost:8000/documents/5?admin_card_no=100001.1
 
 export default router;
