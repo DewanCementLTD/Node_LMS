@@ -31,3 +31,15 @@ export const phoneSchema = z.object({
     phone: z.string().min(1, 'Phone number is required'),
   }),
 });
+
+export const emergencyContactSchema = z.object({
+  params: z.object({
+    card_no: z.string().min(1, 'card_no is required'),
+  }),
+  body: z.object({
+    name: z.string().min(1, 'Name is required'),
+    relationship: z.string().default(''),
+    phone: z.string().default(''),
+  }),
+});
+

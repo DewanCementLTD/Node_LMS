@@ -383,12 +383,39 @@ export const authenticateUser = async (username, password) => {
   };
 };
 
+const getEmergencyContact = async (connection, card_no) => {
+  try {
+    const card = String(card_no);
+    const prefix = card.includes('.') ? card.split('.')[0] : card;
+    const r = await connection.execute(
+      `SELECT NAME AS "name", RELATIONSHIP AS "relationship", PHONE AS "phone"
+       FROM LMS_EMERGENCY_CONTACT
+       WHERE CARD_NO = :card OR CARD_NO = :prefix
+       ORDER BY UPDATED_AT DESC`,
+      { card, prefix },
+      { outFormat: 4002 }
+    );
+    const row = r.rows?.[0];
+    if (row && (row.name || row.phone)) {
+      return {
+        name: row.name || '',
+        relationship: row.relationship || '',
+        phone: row.phone || '',
+      };
+    }
+  } catch (e) {
+    console.log(`[PROFILE] emergency contact lookup failed for ${card_no}: ${e.message ?? e}`);
+  }
+  return null;
+};
+
 export const getProfile = async (card_no) => {
   let connection;
   try {
     connection = await getDirectConnection();
     const sql = `
       SELECT
+        TO_CHAR(e.CARD_NO)                         AS "card_no",
         h.NAME                                     AS "emp_name",
         -- h.USER_PASWD                               AS "password",
         d.DEPT_NAME                                AS "department",
@@ -409,7 +436,13 @@ export const getProfile = async (card_no) => {
       FETCH FIRST 1 ROWS ONLY
     `;
     const result = await connection.execute(sql, { card_no }, { outFormat: 4002 });
-    return result.rows?.[0] ?? null;
+    const profileData = result.rows?.[0] ?? null;
+    if (profileData) {
+      const resolvedCard = profileData.card_no || card_no;
+      profileData.emergency_contact = await getEmergencyContact(connection, resolvedCard);
+      delete profileData.card_no;
+    }
+    return profileData;
   } finally {
     await connection?.close();
   }
@@ -568,3 +601,36 @@ export const changePassword = async (card_no, old_password, new_password) => {
   const result = await updatePasswordRow(card_no, new_password);
   return { success: result.status === 'success' };
 };
+
+export const saveEmergencyContact = async (card_no, name, relationship, phone) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    await connection.execute(
+      `
+      MERGE INTO LMS_EMERGENCY_CONTACT t
+      USING (SELECT :card AS CARD_NO FROM DUAL) s
+      ON (t.CARD_NO = s.CARD_NO)
+      WHEN MATCHED THEN UPDATE SET
+          t.NAME = :name, t.RELATIONSHIP = :rel, t.PHONE = :phone,
+          t.UPDATED_AT = SYSDATE
+      WHEN NOT MATCHED THEN INSERT (CARD_NO, NAME, RELATIONSHIP, PHONE, UPDATED_AT)
+          VALUES (:card, :name, :rel, :phone, SYSDATE)
+      `,
+      {
+        card: String(card_no).slice(0, 30),
+        name: String(name || '').slice(0, 200),
+        rel: String(relationship || '').slice(0, 100),
+        phone: String(phone || '').slice(0, 50),
+      },
+      { autoCommit: true }
+    );
+    return { status: 'success', message: 'Emergency contact saved' };
+  } catch (err) {
+    console.error(`[PROFILE] emergency contact save failed for ${card_no}:`, err);
+    return { status: 'error', message: err.message };
+  } finally {
+    await connection?.close();
+  }
+};
+

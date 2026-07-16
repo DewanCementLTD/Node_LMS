@@ -12,6 +12,7 @@ import {
   getAttendanceReportRange,
   getAttendanceSummary,
 } from '../services/attendance.service.js';
+import { buildAttendancePdf } from '../services/attendancePdf.service.js';
 import { forceUpdateBlock } from '../services/appVersion.service.js';
 
 // POST /auth/attendance/face
@@ -107,3 +108,18 @@ export const attendanceSummary = async (req, res) => {
     return res.status(500).json({ detail: String(e.message ?? e) });
   }
 };
+
+export const attendanceReportPdf = async (req, res, next) => {
+  try {
+    const { card_no } = res.locals.validated.params;
+    const { from_date, to_date } = res.locals.validated.query;
+    const pdfBuffer = await buildAttendancePdf(card_no, from_date, to_date);
+    const filename = `attendance_${card_no}_${from_date}_to_${to_date}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+  } catch (e) {
+    return res.status(500).json({ detail: `PDF generation failed: ${e.message ?? e}` });
+  }
+};
+

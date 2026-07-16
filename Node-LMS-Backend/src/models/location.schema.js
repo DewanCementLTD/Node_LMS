@@ -48,3 +48,13 @@ export const locationReportSchema = z.object({
     category: z.string().optional(),
   }),
 });
+
+export const myLocationHistorySchema = z.object({
+  params: z.object({
+    card_no: z.string().min(1),
+  }),
+  query: z.object({
+    date: z.string().min(1, 'date is required'),
+  }),
+});
+

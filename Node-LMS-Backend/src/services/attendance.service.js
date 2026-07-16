@@ -569,3 +569,62 @@ export const getAttendanceSummary = async (card_no, from_date, to_date) => {
     await connection?.close();
   }
 };
+
+export const getRosterEmployeeName = async (card_no) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const result = await connection.execute(
+      `
+      SELECT UNIQUE h.NAME AS "emp_name"
+      FROM TMS_DUTY_ROSTER_V d
+      JOIN HR_EMP_MASTER h ON h.EMPCODE = d.EMP_FK
+      WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+      `,
+      { card: card_no, card_int: cardInt(card_no) },
+      OBJ
+    );
+    return result.rows?.[0]?.emp_name ?? null;
+  } catch (e) {
+    console.error(`[ROSTER] Error fetching employee name for ${card_no}:`, e);
+    return null;
+  } finally {
+    await connection?.close();
+  }
+};
+
+export const getPdfEmployeeDetails = async (card_no) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const sql = `
+      SELECT
+        h.NAME                                     AS "emp_name",
+        h.EMPCODE                                  AS "empcode",
+        d.DEPT_NAME                                AS "department",
+        dg.DESG_DESC                               AS "designation",
+        e.STATUS                                   AS "status",
+        h."MOBILE#"                                AS "mobile_no",
+        ci.DESCR                                   AS "comp_name",
+        ci.IMG                                     AS "comp_img"
+      FROM HR_EMP_MASTER h
+      LEFT JOIN EMPLOYEE     e  ON e.EMPCODE   = h.EMPCODE
+      LEFT JOIN HR_DEPT      d  ON d.DEPT_NO   = h.DEPT_NO  AND TO_CHAR(d.COMPC) = TO_CHAR(h.UNIT_ID)
+      LEFT JOIN HR_DESG      dg ON dg.DESG_CD  = h.DESG_CD  AND TO_CHAR(dg.COMPC) = TO_CHAR(h.UNIT_ID)
+      LEFT JOIN COMPANY_INFO ci ON ci.COMPC    = h.UNIT_ID
+      WHERE TO_CHAR(e.CARD_NO) = :card_no
+         OR h."ATDTCARD#"      = :card_no
+         OR h.EMPCODE          = :card_no
+      FETCH FIRST 1 ROWS ONLY
+    `;
+    const result = await connection.execute(sql, { card_no }, OBJ);
+    return result.rows?.[0] ?? null;
+  } catch (e) {
+    console.error(`[ROSTER] Error fetching employee details for ${card_no}:`, e);
+    return null;
+  } finally {
+    await connection?.close();
+  }
+};
+
+

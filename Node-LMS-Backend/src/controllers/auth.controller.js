@@ -1,4 +1,4 @@
-import { authenticateUser, getProfile, lookupByPhone, changePassword } from '../services/auth.service.js';
+import { authenticateUser, getProfile, lookupByPhone, changePassword, saveEmergencyContact as saveEmergencyContactService } from '../services/auth.service.js';
 
 export const login = async (req, res, next) => {
   try {
@@ -49,3 +49,18 @@ export const updatePassword = async (req, res, next) => {
     next(err);
   }
 };
+
+export const saveEmergencyContact = async (req, res, next) => {
+  try {
+    const { card_no } = res.locals.validated.params;
+    const { name, relationship, phone } = res.locals.validated.body;
+    const result = await saveEmergencyContactService(card_no, name, relationship, phone);
+    if (result.status === 'error') {
+      return res.status(500).json({ detail: result.message });
+    }
+    res.json({ status: 'SUCCESS', message: result.message });
+  } catch (err) {
+    next(err);
+  }
+};
+
