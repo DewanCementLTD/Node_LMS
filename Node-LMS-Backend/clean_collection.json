@@ -1,0 +1,2388 @@
+{
+  "info": {
+    "name": "Reference API Sync Test - ALL Routes (Clean & Hardcoded)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "[Local] GET departments",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/departments?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "departments"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET departments",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/departments?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "departments"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET grades",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/grades?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "grades"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET grades",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/grades?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "grades"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET designations",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/designations?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "designations"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET designations",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/designations?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "designations"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET emp-statuses",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/emp-statuses?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "emp-statuses"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET emp-statuses",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/emp-statuses?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "emp-statuses"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET banks",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/banks?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "banks"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET banks",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/banks?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "banks"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET bank-branches",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/bank-branches?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "bank-branches"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET bank-branches",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/bank-branches?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "bank-branches"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET qualifications",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/qualifications?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "qualifications"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET qualifications",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/qualifications?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "qualifications"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET shifts",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/shifts?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "shifts"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET shifts",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/shifts?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "shifts"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET shift-lov",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/shift-lov?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "shift-lov"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET shift-lov",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/shift-lov?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "shift-lov"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET blood-groups",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/blood-groups?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "blood-groups"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET blood-groups",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/blood-groups?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "blood-groups"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET cadre",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/cadre?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "cadre"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET cadre",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/cadre?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "cadre"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET units",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/units?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "units"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET units",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/units?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "units"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET religions",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/religions?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "religions"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET religions",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/religions?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "religions"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET reporting-officers",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/reporting-officers?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "reporting-officers"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET reporting-officers",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/reporting-officers?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "reporting-officers"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] GET locations",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/locations?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "locations"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] GET locations",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/locations?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "locations"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] POST Departments",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"dept_name\": \"MCP Test Dept\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/departments?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "departments"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] POST Departments",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"dept_name\": \"MCP Test Dept\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/departments?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "departments"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] POST Grades",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"grade_cd\": \"MCPG\",\n    \"descr\": \"MCP Grade\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/grades?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "grades"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] POST Grades",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"grade_cd\": \"MCPG\",\n    \"descr\": \"MCP Grade\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/grades?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "grades"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] POST Designations",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"grade_cd\": \"MCPG\",\n    \"desg_desc\": \"MCP Desg\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/designations?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "designations"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] POST Designations",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"grade_cd\": \"MCPG\",\n    \"desg_desc\": \"MCP Desg\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/designations?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "designations"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] POST Shifts",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"shift\": \"X\",\n    \"shift_desc\": \"MCP Shift\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/shifts?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "shifts"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] POST Shifts",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"shift\": \"X\",\n    \"shift_desc\": \"MCP Shift\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/shifts?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "shifts"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] POST Blood Groups",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"blood_group\": \"MCP+\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/blood-groups?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "blood-groups"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] POST Blood Groups",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"blood_group\": \"MCP+\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/blood-groups?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "blood-groups"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] POST Cadre",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"cadre\": \"MCP\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/cadre?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "cadre"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] POST Cadre",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"cadre\": \"MCP\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/cadre?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "cadre"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] POST Units",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"unit_name\": \"MCP Unit\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/units?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "units"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] POST Units",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"unit_name\": \"MCP Unit\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/units?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "units"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] POST Locations",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"lcode\": \"9999\",\n    \"descr\": \"MCP Loc\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/locations?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "locations"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] POST Locations",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"lcode\": \"9999\",\n    \"descr\": \"MCP Loc\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/locations?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "locations"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] POST Emp Statuses",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"descr\": \"MCP Test Status\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/emp-statuses?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "emp-statuses"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] POST Emp Statuses",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"descr\": \"MCP Test Status\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/emp-statuses?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "emp-statuses"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] POST Banks",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"bnkname\": \"MCP Bank\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/banks?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "banks"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] POST Banks",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"bnkname\": \"MCP Bank\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/banks?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "banks"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] POST Bank Branches",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"bnkcode\": \"35\",\n    \"brnname\": \"MCP Branch\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/bank-branches?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "bank-branches"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] POST Bank Branches",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"bnkcode\": \"36\",\n    \"brnname\": \"MCP Branch\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/bank-branches?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "bank-branches"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] POST Qualifications",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"descr\": \"MCP Qual\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/qualifications?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "qualifications"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] POST Qualifications",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"descr\": \"MCP Qual\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/qualifications?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "qualifications"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] PUT Shifts",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"shift\": \"Z5\",\n    \"shift_desc\": \"Updated Shift\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/shifts/Z5?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "shifts",
+            "Z5"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] PUT Shifts",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"shift\": \"Z5\",\n    \"shift_desc\": \"Updated Shift\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/shifts/Z5?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "shifts",
+            "Z5"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] DELETE Shifts",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/shifts/Z5?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "shifts",
+            "Z5"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] DELETE Shifts",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/shifts/Z5?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "shifts",
+            "Z5"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] PUT Locations",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"lcode\": \"9957\",\n    \"descr\": \"Updated Loc\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8000/reference/locations/9957?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "locations",
+            "9957"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] PUT Locations",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"lcode\": \"9957\",\n    \"descr\": \"Updated Loc\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/locations/9957?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "locations",
+            "9957"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] DELETE Emp Statuses",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/emp-statuses/38?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "emp-statuses",
+            "38"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] DELETE Emp Statuses",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/emp-statuses/39?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "emp-statuses",
+            "39"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] DELETE Bank Branches",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/bank-branches/35/35?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "bank-branches",
+            "35",
+            "35"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] DELETE Bank Branches",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/bank-branches/36/36?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "bank-branches",
+            "36",
+            "36"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] DELETE Banks",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/banks/35?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "banks",
+            "35"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] DELETE Banks",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/banks/36?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "banks",
+            "36"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Local] DELETE Qualifications",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/reference/qualifications/Dummy%20Qual%20570?compc=1&admin_card_no=100001.1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "reference",
+            "qualifications",
+            "Dummy%20Qual%20570"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "[Live] DELETE Qualifications",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "https://hrms.sysnovix.com/api/reference/qualifications/Dummy%20Qual%20570?compc=1&admin_card_no=100001.1",
+          "protocol": "https",
+          "host": [
+            "hrms.sysnovix.com"
+          ],
+          "path": [
+            "api",
+            "reference",
+            "qualifications",
+            "Dummy%20Qual%20570"
+          ],
+          "query": [
+            {
+              "key": "compc",
+              "value": "1"
+            },
+            {
+              "key": "admin_card_no",
+              "value": "100001.1"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
