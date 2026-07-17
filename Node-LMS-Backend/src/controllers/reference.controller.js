@@ -318,3 +318,28 @@ export const removeQualification = async (req, res, next) => {
     handleResult(res, await refService.deleteQualification(descr, company));
   } catch (err) { next(err); }
 };
+
+export const listInterviewTypes = async (req, res, next) => {
+  try {
+    const { compc, brnch } = res.locals.validated.query;
+    res.json({ items: await refService.getInterviewTypes(compc, brnch) });
+  } catch (err) { next(err); }
+};
+
+export const createInterviewType = async (req, res, next) => {
+  try {
+    const { admin_card_no, compc, brnch } = res.locals.validated.query;
+    const { descr } = res.locals.validated.body;
+    const company = await setupCompany(admin_card_no, compc);
+    handleResult(res, await refService.addInterviewType(descr, company, brnch));
+  } catch (err) { next(err); }
+};
+
+export const removeInterviewType = async (req, res, next) => {
+  try {
+    const { type_id } = res.locals.validated.params;
+    const { admin_card_no, compc } = res.locals.validated.query;
+    const company = await setupCompany(admin_card_no, compc);
+    handleResult(res, await refService.removeInterviewType(type_id, company));
+  } catch (err) { next(err); }
+};

@@ -11,6 +11,7 @@ import {
   updateEmployeeSchema,
   attendanceReportSchema,
   dutyRosterSchema,
+  updateDutyRosterEntrySchema,
 } from '../models/hrms.schema.js';
 // Controllers
 import {
@@ -25,6 +26,7 @@ import {
   bulkAttendance,
   attendanceDetails,
   employeeDutyRoster,
+  editDutyRosterEntry,
 } from '../controllers/hrms.controller.js';
 
 const router = Router();
@@ -57,5 +59,6 @@ router.post('/employees',               validate(createEmployeeSchema),  require
 // Duty roster  (read-only, ERP-owned DUTY_ROSTER)
 // ---------------------------------------------------------------------------
 router.get('/duty-roster/:card_no', validate(dutyRosterSchema), requireHrAdmin, employeeDutyRoster); // [X] http://localhost:8000/hrms/duty-roster/100108.1?admin_card_no=100001.1&month=MAY-26
+router.put('/duty-roster/entry/:pk', validate(updateDutyRosterEntrySchema), requireHrAdmin, editDutyRosterEntry); // [x] http://localhost:8000/hrms/duty-roster/entry/1234?admin_card_no=100001.1
 
 export default router;

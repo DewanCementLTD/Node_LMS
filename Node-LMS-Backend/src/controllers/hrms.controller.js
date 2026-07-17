@@ -20,6 +20,7 @@ import {
   getBulkAttendanceSummary,
   getBulkAttendanceDetails,
   getEmployeeRoster,
+  updateRosterEntry,
 } from "../services/hrms.service.js";
 
 // GET /hrms/dashboard
@@ -176,6 +177,34 @@ export const employeeDutyRoster = async (req, res, next) => {
     const { card_no } = res.locals.validated.params;
     const { month } = res.locals.validated.query;
     res.json(await getEmployeeRoster(card_no, month ?? null));
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /hrms/duty-roster/entry/:pk
+export const editDutyRosterEntry = async (req, res, next) => {
+  try {
+    const { pk } = res.locals.validated.params;
+    const { admin_card_no } = res.locals.validated.query;
+    const { shift, remarks } = res.locals.validated.body;
+    
+    // In Node.js, we don't have datetime.now():%d-%b-%y %H:%M exactly built-in easily
+    // Let's format it manually similar to FastAPI
+    const now = new Date();
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const d = String(now.getDate()).padStart(2, '0');
+    const m = months[now.getMonth()];
+    const y = String(now.getFullYear()).slice(-2);
+    const h = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
+    const stamp = `${admin_card_no} ${d}-${m}-${y} ${h}:${min}`;
+
+    const result = await updateRosterEntry(pk, shift, remarks, stamp);
+    if (result.status === "error") {
+      return res.status(400).json({ detail: result.message });
+    }
+    res.json(result);
   } catch (err) {
     next(err);
   }

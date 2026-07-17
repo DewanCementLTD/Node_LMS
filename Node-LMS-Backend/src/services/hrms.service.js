@@ -1161,3 +1161,48 @@ export const getEmployeeRoster = async (cardNo, month = null) => {
     await connection?.close();
   }
 };
+
+/**
+ * Edit one DUTY_ROSTER row by PK: shift code and/or remarks, stamping who
+ * updated it (UPDATED). Updates ONLY by primary key — never inserts.
+ */
+export const updateRosterEntry = async (pk, shift = null, remarks = null, updated_by = null) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const sets = [];
+    const binds = { pk: Number(pk) };
+    
+    if (shift !== null) {
+      const s = String(shift || "").trim().toUpperCase().substring(0, 1);
+      sets.push("ROSTER_SHIFT = :shift");
+      binds.shift = s || null;
+    }
+    
+    if (remarks !== null) {
+      const r = String(remarks || "").trim().substring(0, 200);
+      sets.push("ROSTER_REMARKS = :remarks");
+      binds.remarks = r || null;
+    }
+    
+    // Always stamp the auditor
+    sets.push("UPDATED = :updated");
+    binds.updated = String(updated_by || "").substring(0, 50) || null;
+    
+    const sql = `UPDATE DUTY_ROSTER SET ${sets.join(", ")} WHERE DUTY_ROSTER_PK = :pk`;
+    const res = await connection.execute(sql, binds, { autoCommit: false });
+    
+    if (res.rowsAffected === 0) {
+      await connection.rollback();
+      return { status: "error", message: "Roster row not found" };
+    }
+    
+    await connection.commit();
+    return { status: "success", updated_by: binds.updated };
+  } catch (e) {
+    if (connection) await connection.rollback();
+    return { status: "error", message: e.message };
+  } finally {
+    await connection?.close();
+  }
+};

@@ -129,4 +129,15 @@ router.post("/qualifications", validate(schemas.addQualificationSchema), require
 // [x] http://localhost:8000/reference/qualifications/BSc?admin_card_no=100001.1
 router.delete("/qualifications/:descr", validate(schemas.removeQualificationSchema), requireHrAdmin, controllers.removeQualification);
 
+// [x] http://localhost:8000/reference/interview-types
+router.get("/interview-types", validate(schemas.readFilterSchema), controllers.listInterviewTypes);
+
+// [-] http://localhost:8000/reference/interview-types?admin_card_no=100001.1
+//     Body: { "descr": "Test Interview Type" }
+router.post("/interview-types", validate(schemas.addInterviewTypeSchema), requireHrAdmin, controllers.createInterviewType);
+
+// [x] http://localhost:8000/reference/interview-types/1?admin_card_no=100001.1
+router.delete("/interview-types/:type_id", validate(schemas.removeInterviewTypeSchema), requireHrAdmin, controllers.removeInterviewType);
+
+
 export default router;

@@ -975,3 +975,142 @@ export const deleteQualification = async (descr, compc = null) => {
     if (conn) await conn.close();
   }
 };
+
+let _interviewTablesReady = false;
+
+const ensureInterviewTables = async () => {
+  if (_interviewTablesReady) return;
+  let conn;
+  try {
+    conn = await getDirectConnection();
+    try {
+      await conn.execute(`
+        CREATE TABLE INTERVIEW_TYPES (
+            TYPE_ID   NUMBER PRIMARY KEY,
+            DESCR     VARCHAR2(50) NOT NULL,
+            COMPC     NUMBER,
+            BRNCH     NUMBER,
+            IS_ACTIVE VARCHAR2(1) DEFAULT 'Y' NOT NULL
+        )`);
+      console.log("[INTERVIEW] Created table INTERVIEW_TYPES");
+    } catch (e) {
+      if (!e.message.includes("ORA-00955")) console.error("[INTERVIEW] Could not create INTERVIEW_TYPES:", e.message);
+    }
+    try {
+      await conn.execute("CREATE SEQUENCE INTERVIEW_TYPES_SEQ START WITH 1 NOCACHE");
+      console.log("[INTERVIEW] Created sequence INTERVIEW_TYPES_SEQ");
+    } catch (e) {
+      if (!e.message.includes("ORA-00955")) console.error("[INTERVIEW] Could not create sequence INTERVIEW_TYPES_SEQ:", e.message);
+    }
+    
+    // Seed the global (COMPC NULL) interview types once.
+    try {
+      const res = await conn.execute("SELECT COUNT(*) FROM INTERVIEW_TYPES WHERE COMPC IS NULL", {}, { outFormat: OUT_FORMAT_ARRAY });
+      if (Number(res.rows[0][0]) === 0) {
+        const defaultTypes = ["HR", "Technical", "Managerial", "Final"];
+        for (const d of defaultTypes) {
+          await conn.execute(`
+              INSERT INTO INTERVIEW_TYPES (TYPE_ID, DESCR, COMPC, BRNCH)
+              VALUES (INTERVIEW_TYPES_SEQ.NEXTVAL, :d, NULL, NULL)
+          `, { d }, { autoCommit: true });
+        }
+        console.log(`[INTERVIEW] Seeded ${defaultTypes.length} global interview types`);
+      }
+    } catch (e) {
+      console.error("[INTERVIEW] Could not seed types:", e.message);
+    }
+    _interviewTablesReady = true;
+  } finally {
+    if (conn) await conn.close();
+  }
+};
+
+export const getInterviewTypes = async (compc = null, brnch = null) => {
+  await ensureInterviewTables();
+  let conn;
+  try {
+    conn = await getDirectConnection();
+    let params = {};
+    let conds = ["IS_ACTIVE = 'Y'"];
+    const c = coerce(compc);
+    if (c !== null && c !== undefined) {
+      conds.push("(COMPC = :c OR COMPC IS NULL)");
+      params.c = c;
+    }
+    const b = coerce(brnch);
+    if (b !== null && b !== undefined) {
+      conds.push("(BRNCH = :b OR BRNCH IS NULL)");
+      params.b = b;
+    }
+    const res = await conn.execute(`
+        SELECT TYPE_ID, DESCR, COMPC, BRNCH FROM INTERVIEW_TYPES
+        WHERE ${conds.join(" AND ")}
+        ORDER BY DESCR
+    `, params, { outFormat: OUT_FORMAT_ARRAY });
+    return (res.rows || []).map(r => ({
+      type_id: Number(r[0]),
+      descr: String(r[1] ?? "").trim(),
+      compc: coerce(r[2]),
+      brnch: coerce(r[3])
+    }));
+  } finally {
+    if (conn) await conn.close();
+  }
+};
+
+export const addInterviewType = async (descr, compc = null, brnch = null) => {
+  await ensureInterviewTables();
+  const d = String(descr || "").trim().substring(0, 50);
+  if (!d) return { status: "error", message: "Description is required" };
+  let conn;
+  try {
+    conn = await getDirectConnection();
+    const c = coerce(compc);
+    const resCount = await conn.execute(`
+        SELECT COUNT(*) FROM INTERVIEW_TYPES
+        WHERE UPPER(DESCR) = UPPER(:d) AND IS_ACTIVE = 'Y'
+          AND (COMPC IS NULL OR COMPC = :c)
+    `, { d, c: c ?? null }, { outFormat: OUT_FORMAT_ARRAY });
+    if (Number(resCount.rows[0][0]) > 0) {
+      return { status: "error", message: `'${d}' already exists` };
+    }
+    const res = await conn.execute(`
+        INSERT INTO INTERVIEW_TYPES (TYPE_ID, DESCR, COMPC, BRNCH)
+        VALUES (INTERVIEW_TYPES_SEQ.NEXTVAL, :d, :c, :b)
+        RETURNING TYPE_ID INTO :out_id
+    `, { 
+        d, 
+        c: c ?? null, 
+        b: coerce(brnch) ?? null, 
+        out_id: { type: oracledb.NUMBER, dir: oracledb.BIND_OUT } 
+    }, { autoCommit: true });
+    
+    return { status: "success", type_id: res.outBinds.out_id[0], descr: d };
+  } catch (e) {
+    if (conn) await conn.rollback();
+    return { status: "error", message: e.message };
+  } finally {
+    if (conn) await conn.close();
+  }
+};
+
+export const removeInterviewType = async (type_id, compc = null) => {
+  await ensureInterviewTables();
+  let conn;
+  try {
+    conn = await getDirectConnection();
+    const res = await conn.execute(`
+        UPDATE INTERVIEW_TYPES SET IS_ACTIVE = 'N'
+        WHERE TYPE_ID = :id AND COMPC = :c
+    `, { id: coerce(type_id), c: coerce(compc) }, { autoCommit: true });
+    if (res.rowsAffected === 0) {
+      return { status: "error", message: "Only types added for this company can be removed." };
+    }
+    return { status: "success" };
+  } catch (e) {
+    if (conn) await conn.rollback();
+    return { status: "error", message: e.message };
+  } finally {
+    if (conn) await conn.close();
+  }
+};

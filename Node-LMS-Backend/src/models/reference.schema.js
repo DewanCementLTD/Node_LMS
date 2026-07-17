@@ -140,3 +140,15 @@ export const locationUpdateSchema = z.object({
 }).merge(baseQuery);
 
 export const removeQualificationSchema = z.object({ params: z.object({ descr: z.string().min(1) }) }).merge(baseQuery);
+
+export const addInterviewTypeSchema = z.object({
+  body: z.object({
+    descr: z.string().min(1)
+  })
+}).merge(baseQuery);
+
+export const removeInterviewTypeSchema = z.object({
+  params: z.object({
+    type_id: z.string().regex(/^\d+$/, "Input should be a valid integer, unable to parse string as an integer")
+  })
+}).merge(baseQuery);

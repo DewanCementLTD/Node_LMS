@@ -136,3 +136,17 @@ export const dutyRosterSchema = z.object({
     month: z.string().optional(),
   }),
 });
+
+// PUT /hrms/duty-roster/entry/:pk
+export const updateDutyRosterEntrySchema = z.object({
+  params: z.object({
+    pk: z.string().regex(/^\d+$/, "Input should be a valid integer, unable to parse string as an integer")
+  }),
+  query: z.object({
+    admin_card_no: z.string().min(1, "admin_card_no is required"),
+  }),
+  body: z.object({
+    shift: z.string().optional(),
+    remarks: z.string().optional(),
+  }),
+});
