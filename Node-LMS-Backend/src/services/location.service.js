@@ -318,14 +318,26 @@ const haversineKm = (lat1, lon1, lat2, lon2) => {
 export const getLocationReportSummary = async ({
   from_date,
   to_date,
-  compc,
-  brnch,
+  allowedCompanies,
+  allowedBranches,
   dept_no,
   desg_cd,
 }) => {
   let connection;
   try {
     connection = await getDirectConnection();
+
+    const binds = { from_date, to_date };
+    const extraClauses = [
+      buildNumericInClause("h.UNIT_ID", allowedCompanies, "cf", binds),
+      buildNumericInClause("h.LOCATION", allowedBranches, "bf", binds),
+      buildNumericInClause("h.DEPT_NO", dept_no, "df", binds),
+      buildNumericInClause("h.DESG_CD", desg_cd, "gf", binds),
+    ]
+      .filter(Boolean)
+      .map((c) => ` AND ${c}`)
+      .join("");
+
     const sql = `
       SELECT
           h.EMPCODE,
@@ -345,6 +357,7 @@ export const getLocationReportSummary = async ({
                 SELECT MIN(g.DESG_DESC)
                 FROM HR_DESG g
                 WHERE LTRIM(g.DESG_CD,'0')=LTRIM(h.DESG_CD,'0')
+                AND TO_CHAR(g.COMPC)=TO_CHAR(h.UNIT_ID)
               ),
               TO_CHAR(h.DESG_CD)
           ) DESG_NAME,
@@ -372,11 +385,7 @@ export const getLocationReportSummary = async ({
       WHERE lt.ATTENDANCE_DATE BETWEEN
             TO_DATE(:from_date,'YYYY-MM-DD')
         AND TO_DATE(:to_date,'YYYY-MM-DD')
-
-      AND (:compc IS NULL OR TO_CHAR(h.UNIT_ID)=:compc)
-      AND (:brnch IS NULL OR TO_CHAR(h.LOCATION)=:brnch)
-      AND (:dept_no IS NULL OR h.DEPT_NO=:dept_no)
-      AND (:desg_cd IS NULL OR h.DESG_CD=:desg_cd)
+      ${extraClauses}
 
       ORDER BY
           h.EMPCODE,
@@ -387,14 +396,7 @@ export const getLocationReportSummary = async ({
 
     const result = await connection.execute(
       sql,
-      {
-        from_date,
-        to_date,
-        compc: compc ?? null,
-        brnch: brnch ?? null,
-        dept_no: dept_no ?? null,
-        desg_cd: desg_cd ?? null,
-      },
+      binds,
       {
         outFormat: 4002,
       },
@@ -438,7 +440,6 @@ export const getLocationReportSummary = async ({
         last_time: group[group.length - 1].RECORDED_AT,
         total_entries: group.length,
         total_distance_km: Number(totalKm.toFixed(2)),
-        status: "Present",
       });
 
       i = j;

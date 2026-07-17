@@ -311,7 +311,7 @@ export const empcodeForCard = async (cardNo) => {
       await connection.execute(
         `
         SELECT h.EMPCODE FROM HR_EMP_MASTER h
-        LEFT JOIN EMPLOYEE e ON e.EMP_NO = h.EMPCODE
+        LEFT JOIN EMPLOYEE e ON e.EMPCODE = h.EMPCODE
         WHERE h.EMPCODE = :c OR TO_CHAR(e.CARD_NO) = :c
         `,
         { c: String(cardNo) },

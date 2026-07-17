@@ -404,6 +404,78 @@ const updateCheckOut = async (recordId, entryTime, opts = {}) => {
 };
 
 // ---------------------------------------------------------------------------
+// Overnight shift detection (mirror get_open_overnight_record)
+// ---------------------------------------------------------------------------
+
+// Minimum minutes after check-in before a mark counts as check-out.
+// Earlier marks are treated as no-ops. Mirrors FastAPI's MIN_CHECKOUT_GAP_MIN.
+const MIN_CHECKOUT_GAP_MIN = 60;
+
+/** For a NIGHT-shift worker, return a still-open check-in from a PRIOR day
+ *  that the current (after-midnight) mark should close, or null. */
+const getOpenOvernightRecord = async (card_no) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const result = await connection.execute(
+      `SELECT ID, ENTRY_TIME, TO_CHAR(CARD_NO) AS CARD_NO, EMPCODE,
+              TO_CHAR(ATTENDANCE_DATE, 'YYYY-MM-DD') AS RDATE,
+              (SYSDATE - (TRUNC(ATTENDANCE_DATE)
+                          + TO_NUMBER(SUBSTR(ENTRY_TIME,1,2))/24
+                          + TO_NUMBER(SUBSTR(ENTRY_TIME,4,2))/1440)) * 24 AS HRS_SINCE_IN
+       FROM ATTENDANCE_RECORDS
+       WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int)
+         AND ENTRY_TIME IS NOT NULL AND EXIT_TIME IS NULL
+         AND TRUNC(ATTENDANCE_DATE) < TRUNC(SYSDATE)
+         AND REGEXP_LIKE(ENTRY_TIME, '^[0-9][0-9]:[0-9][0-9]$')
+       ORDER BY ID DESC
+       FETCH FIRST 1 ROWS ONLY`,
+      { card: card_no, card_int: cardInt(card_no) },
+      OBJ,
+    );
+    const row = result.rows?.[0];
+    if (!row) return null;
+
+    const hrs = row.HRS_SINCE_IN;
+    if (hrs === null || hrs === undefined || hrs < 1 || hrs > 16) return null;
+
+    // Check if the shift was overnight (time_to < time_from)
+    const shiftResult = await connection.execute(
+      `SELECT sh.TIME_FROM, sh.TIME_TO
+       FROM SHIFT_HEAD sh
+       WHERE sh.COMPC = (SELECT TO_NUMBER(MAX(UNIT_ID)) FROM HR_EMP_MASTER WHERE EMPCODE = :emp)
+         AND sh.SHIFT = (
+               SELECT MIN(ROSTER_SHIFT) FROM DUTY_ROSTER
+                WHERE (TO_CHAR(CARD_NO) = :card OR TO_CHAR(CARD_NO) = :card_int
+                       OR TO_CHAR(EMP_FK) = :card)
+                  AND TRUNC(ROSTER_DATE) = TO_DATE(:rdate, 'YYYY-MM-DD'))
+         AND ROWNUM = 1`,
+      { emp: row.EMPCODE, card: card_no, card_int: cardInt(card_no), rdate: row.RDATE },
+      OBJ,
+    );
+    const sh = shiftResult.rows?.[0];
+    if (!sh) return null;
+
+    const timeFrom = (sh.TIME_FROM ?? '').trim();
+    const timeTo = (sh.TIME_TO ?? '').trim();
+    if (!timeFrom || !timeTo || timeTo >= timeFrom) return null;
+
+    return {
+      id: row.ID,
+      entry_time: (row.ENTRY_TIME ?? '').trim(),
+      exit_time: '',
+      card_no: row.CARD_NO || card_no,
+      source: 'attendance_records',
+    };
+  } catch (e) {
+    console.log(`[OVERNIGHT] lookup failed for card=${card_no}: ${e.message ?? e}`);
+    return null;
+  } finally {
+    await connection?.close();
+  }
+};
+
+// ---------------------------------------------------------------------------
 // Smart attendance (mirror smart_mark_attendance)
 // ---------------------------------------------------------------------------
 
@@ -423,6 +495,21 @@ export const smartMarkAttendance = async (card_no, attendance_type = 'check_in',
   };
 
   if (record === null) {
+    // No record for today. Check for overnight shift closure first.
+    const overnight = await getOpenOvernightRecord(card_no);
+    if (overnight !== null) {
+      console.log(
+        `[ATTENDANCE] card=${card_no} → overnight check-out, closing prior shift (in ${overnight.entry_time})`,
+      );
+      const coAddr = opts.formatted_address || opts.address || null;
+      return updateCheckOut(overnight.id, overnight.entry_time, {
+        current_out: null,
+        checkout_lat: opts.latitude,
+        checkout_long: opts.longitude,
+        checkout_address: coAddr,
+      });
+    }
+
     console.log(`[ATTENDANCE] card=${card_no} → no record today, checking in`);
     const empcode = await getEmpcode(card_no);
     return insertCheckIn(card_no, empcode, checkInOpts);
@@ -432,6 +519,24 @@ export const smartMarkAttendance = async (card_no, attendance_type = 'check_in',
   const exit_ = record.exit_time; // "" when EXIT_TIME is NULL in DB
 
   if (entry) {
+    // 60-minute double-tap guard: if no exit yet and < 60 min since check-in,
+    // treat as a no-op (keep checked in) to prevent accidental checkouts.
+    if (!exit_) {
+      const minsSinceIn = timeSpentMinutes(entry, nowHHMM());
+      if (minsSinceIn < MIN_CHECKOUT_GAP_MIN) {
+        console.log(
+          `[ATTENDANCE] card=${card_no} → mark ${minsSinceIn}min after check-in (<${MIN_CHECKOUT_GAP_MIN}), keeping checked-in (no check-out yet)`,
+        );
+        return {
+          status: 'success',
+          action: 'noop',
+          message: 'Already checked in',
+          marked_at: entry,
+          location_verified: opts.latitude !== null && opts.latitude !== undefined,
+        };
+      }
+    }
+
     // Already has an IN → this (later) mark becomes/extends the check-out.
     console.log(
       `[ATTENDANCE] card=${card_no} → has entry (${entry}, out=${exit_ || '-'}), updating check-out`,

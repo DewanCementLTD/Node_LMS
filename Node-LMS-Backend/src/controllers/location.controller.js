@@ -47,11 +47,32 @@ export const locationSummary = async (req, res, next) => {
 
 export const locationReportSummary = async (req, res, next) => {
   try {
-    const items = await getLocationReportSummary(res.locals.validated.query);
+    const {
+      from_date,
+      to_date,
+      admin_card_no,
+      compc,
+      brnch,
+      dept_no,
+      desg_cd,
+    } = res.locals.validated.query;
+
+    // Bug 5.1: Enforce company/branch scoping — same as locationTrail.
+    const { finalCompanies, finalBranches } = await resolveFilterLists(admin_card_no, compc, brnch);
+
+    const items = await getLocationReportSummary({
+      from_date,
+      to_date,
+      allowedCompanies: finalCompanies,
+      allowedBranches: finalBranches,
+      dept_no: toList(dept_no),
+      desg_cd: toList(desg_cd),
+    });
 
     res.json({
-      status: "SUCCESS",
       items,
+      from_date,
+      to_date,
     });
   } catch (err) {
     next(err);

@@ -35,12 +35,11 @@ export const searchEmployees = async (query) => {
           e.EMP_NAME,
           e.DEPARTMENT,
           e.DESIGNATION,
-          NVL(f.is_active, 'N')     AS face_registered,
+          NVL((SELECT MAX(f.IS_ACTIVE) FROM EMP_FACE_EMBEDDINGS f WHERE f.EMPCODE = e.EMPCODE AND f.IS_ACTIVE = 'Y'), 'N') AS face_registered,
           e.MOBILE_NO,
           e.EMPCODE
       FROM EMPLOYEE e
       LEFT JOIN HR_EMP_MASTER h ON e.EMPCODE = h.EMPCODE
-      LEFT JOIN EMP_FACE_EMBEDDINGS f ON e.EMPCODE = f.EMPCODE
       WHERE UPPER(e.EMP_NAME) LIKE :q
           OR e.MOBILE_NO LIKE :q
           OR TO_CHAR(e.CARD_NO) LIKE :q

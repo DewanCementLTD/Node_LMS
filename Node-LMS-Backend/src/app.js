@@ -22,8 +22,7 @@ app.use('/', routes);
 app.use((err, req, res, next) => {
   console.error('Unhandled Error:', err.message || err);
   res.status(500).json({ 
-    status: "ERROR", 
-    message: "Internal Server Error" 
+    detail: err.message || "Internal Server Error" 
   });
 });
 

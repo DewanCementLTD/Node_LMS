@@ -64,11 +64,12 @@ export const listEmployeeDocuments = async (req, res) => {
     // res.json( {"1": 12} );
   } catch (err) {
     console.error('Error listing employee documents:', err);
+    res.status(500).json({ detail: String(err.message ?? err) });
   }
 };
 
 // POST /documents  (multipart/form-data)
-export const uploadDocument = async (req, res) => {
+export const uploadDocument = async (req, res, next) => {
   try {
     if (!req.file) {
       return res.status(400).json({ detail: 'file is required' });

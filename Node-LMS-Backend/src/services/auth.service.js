@@ -428,8 +428,8 @@ export const getProfile = async (card_no) => {
         h.NICNO                                    AS "nic_no"
       FROM HR_EMP_MASTER h
       LEFT JOIN EMPLOYEE    e  ON e.EMPCODE   = h.EMPCODE
-      LEFT JOIN HR_DEPT     d  ON d.DEPT_NO   = h.DEPT_NO  AND TO_CHAR(d.COMPC) = TO_CHAR(h.UNIT_ID)
-      LEFT JOIN HR_DESG     dg ON dg.DESG_CD  = h.DESG_CD  AND TO_CHAR(dg.COMPC) = TO_CHAR(h.UNIT_ID)
+      LEFT JOIN HR_DEPT     d  ON LTRIM(d.DEPT_NO,'0') = LTRIM(h.DEPT_NO,'0')  AND TO_CHAR(d.COMPC) = TO_CHAR(h.UNIT_ID)
+      LEFT JOIN HR_DESG     dg ON LTRIM(dg.DESG_CD,'0') = LTRIM(h.DESG_CD,'0')  AND TO_CHAR(dg.COMPC) = TO_CHAR(h.UNIT_ID)
       WHERE TO_CHAR(e.CARD_NO) = :card_no
          OR h."ATDTCARD#"      = :card_no
          OR h.EMPCODE          = :card_no

@@ -97,8 +97,7 @@ export const requireHrAdmin = async (req, res, next) => {
     }
 
     return res.status(403).json({
-      status: "ERROR",
-      message: "HR admin access required",
+      detail: "HR admin access required",
     });
   } catch (err) {
     next(err);
