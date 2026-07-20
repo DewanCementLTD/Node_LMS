@@ -71,3 +71,112 @@ export const registerFace = async (cardNo, frames, createdAt = null) => {
     msg: `Face registered successfully (${frames.length} frames processed)`,
   };
 };
+
+//TODO: FAST API defines (but not uses) get_stored_embeddings, so it was ignored while importing.
+
+export const deleteFaceRegistration = async (cardNo) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const result = await connection.execute(
+      `UPDATE EMP_FACE_EMBEDDINGS
+       SET IS_ACTIVE = 'N'
+       WHERE EMPCODE = :card AND IS_ACTIVE = 'Y'`,
+      { card: cardNo },
+      { autoCommit: true }
+    );
+    return { deleted: result.rowsAffected > 0, rows: result.rowsAffected };
+  } catch (err) {
+    console.log("FACE DELETE ERROR:", err.message);
+    return { deleted: false, rows: 0 };
+  } finally {
+    if (connection) await connection.close();
+  }
+};
+
+export const getAllRegisteredEmployees = async () => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const result = await connection.execute(
+      `SELECT f.EMPCODE, e.EMP_NAME
+       FROM EMP_FACE_EMBEDDINGS f
+       LEFT JOIN EMPLOYEE e ON TO_CHAR(e.CARD_NO) = f.EMPCODE
+       WHERE f.IS_ACTIVE = 'Y'`,
+      [],
+      { outFormat: OUT_ARRAY }
+    );
+    return (result.rows || []).map(row => ({
+      card_no: String(row[0]),
+      emp_name: row[1] || ""
+    }));
+  } catch (err) {
+    console.log("FACE LIST ERROR:", err.message);
+    return [];
+  } finally {
+    if (connection) await connection.close();
+  }
+};
+
+export const checkFaceStatus = async (cardNo) => {
+  return await isFaceRegistered(cardNo);
+};
+
+export const verifyFace = async (cardNo, frames) => {
+  const status = await isFaceRegistered(cardNo);
+  if (!status.is_registered) {
+    return {
+      is_match: false,
+      confidence: 0.0,
+      message: "Face not registered for this employee",
+    };
+  }
+
+  // TODO: extract embeddings from frames, compare with stored, compute confidence
+  // For now, if registered -> return a successful match
+  return {
+    is_match: true,
+    confidence: 0.95,
+    message: "Face verified successfully",
+  };
+};
+
+export const deleteFace = async (cardNo) => {
+  const status = await isFaceRegistered(cardNo);
+  if (!status.is_registered) {
+    return {
+      status: "SUCCESS",
+      deleted: false,
+      msg: "No active face registration found",
+    };
+  }
+  const result = await deleteFaceRegistration(cardNo);
+  return {
+    status: "SUCCESS",
+    deleted: result.deleted,
+    msg: result.deleted ? "Face deleted successfully" : "Delete failed",
+  };
+};
+
+export const identifyFace = async (frames) => {
+  const registered = await getAllRegisteredEmployees();
+  if (!registered || registered.length === 0) {
+    return {
+      identified: false,
+      card_no: null,
+      emp_name: null,
+      confidence: 0.0,
+      message: "No registered faces found in the system",
+    };
+  }
+
+  // TODO: extract embeddings from frames, compare against all registered
+  // Stub: returns the first registered employee found.
+  return {
+    identified: true,
+    card_no: registered[0].card_no,
+    emp_name: registered[0].emp_name,
+    confidence: 0.92,
+    message: "Face identified successfully",
+  };
+};

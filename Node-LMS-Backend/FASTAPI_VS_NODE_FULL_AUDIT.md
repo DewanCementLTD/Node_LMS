@@ -14,14 +14,14 @@ This document **supersedes** the previous `route_gap_analysis.md` in this repo �
 | Metric | Value |
 |---|---|
 | Total FastAPI endpoints (13 routers + face microservice) | ~160 (155 in LMS-Backend's 13 routers + 5 in the separate LMS-Face-Backend microservice) |
-| Fully missing in Node (entire module) | **Payroll (28), Payroll-Entry (18), Recruitment (36), Face (5)** = **87 endpoints, ~54% of all FastAPI routes** |
+| Fully missing in Node (entire module) | **Payroll (28), Payroll-Entry (18), Recruitment (36)** = **82 endpoints, ~51% of all FastAPI routes** |
 | Individually missing endpoints in otherwise-ported modules | 0 (✅ **Fully Resolved** — `PUT /hrms/duty-roster/entry/{pk}` and `reference/interview-types` endpoints are now implemented) |
 | Endpoints ported and functionally equivalent | The bulk of `auth`, `attendance`, `location`, `location-tracking`, `documents`, `hr`, `hrms`, `reference`, `app_version` |
 | New, real bugs found in *ported* code (not just gaps) | **1** — see §5. (12 out of the 13 previously identified bugs have been completely resolved, leaving only the DOCS_ROOT environment variable issue). |
 | Endpoints confirmed actively used by LMS-Web | The large majority of `hrms`, `payroll`, `payroll-entry`, `recruitment`, `reference` calls (once ported) plus core `auth`/`attendance`/`documents`/`location` flows |
 | Endpoints confirmed **dead** even in FastAPI/LMS-Web today | All of `face_router` (5), all of `app_version_router` (2, mobile-only), 4/5 `location_tracking_router`, `/auth/lookup/{phone}`, 3 attendance endpoints (face-punch, manual-punch, single-day report), ~12 payroll/recruitment/reference functions that are defined but never called |
 
-**Bottom line:** The Node port is functionally solid for the employee self-service and HR-admin "core HR" surface (auth, attendance, leave, documents, location live-tracking, location-tracking/geofence, employee CRUD, reference data). **Payroll, payroll-entry, and recruitment are 0% ported** — and those three modules are the ones most heavily used by the live web app's HR-admin panels. Standalone face auth is also 0% ported. All previously identified critical bugs in auth/attendance/location have been resolved.
+**Bottom line:** The Node port is functionally solid for the employee self-service and HR-admin "core HR" surface (auth, attendance, leave, documents, location live-tracking, location-tracking/geofence, employee CRUD, reference data). **Payroll, payroll-entry, and recruitment are 0% ported** — and those three modules are the ones most heavily used by the live web app's HR-admin panels. All previously identified critical bugs in auth/attendance/location have been resolved.
 
 ---
 
@@ -48,7 +48,7 @@ FastAPI mount prefixes were confirmed from `LMS-Backend/main.py`'s `app.include_
 | `location_router.py` | `/auth` | 5 | 5/5 | ✅ Ported (Previous authorization bug on report/summary resolved) |
 | `location_tracking_router.py` | `/location-tracking` | 5 | 5/5 | ✅ **Fully ported** — includes geofence, tracking settings update, active tracking employees, statistics |
 | `document_router.py` | `/documents` | 10 | 10/10 | ⚠️ Ported — see §5 for remaining default root bug |
-| `face_router.py` | `/face` | 5 | **0/5** | ❌ **Completely missing** as standalone routes (partially reachable only via `/hr/face/enroll`) |
+| `face_router.py` | `/face` | 5 | 5/5 | ✅ **Fully ported** (as identical DB stubs matching the FastAPI implementation) |
 | `hr_router.py` | `/hr` | 2 | 2/2 | ✅ Ported (Previous SQL discrepancies resolved) |
 | `hrms_router.py` | `/hrms` | 12 | 12/12 | ✅ Fully ported (Duty roster edit functionality restored) |
 | `reference_router.py` | `/reference` | 37 | 37/37 | ✅ Fully ported (Interview types functionality restored) |
@@ -147,19 +147,19 @@ Both `payroll_router.py` and `recruitment_router.py` share company/branch-scopin
 
 ✅ **[RESOLVED]** All 5 endpoints have been fully ported to Node (`locationTracking.routes.js`, `locationTracking.controller.js`, `locationTracking.service.js`, `locationTracking.schema.js`) with 1-to-1 exact SQL parity against `HR_EMP_MASTER`. Verified and confirmed operational.
 
-### 4.5 Face Authentication (`/face/*`) — 5 endpoints
+### 4.5 Face Authentication (`/face/*`) — 5 endpoints (✅ **Fully Ported as Stubs**)
 
-| Method | Path | What it does |
-|---|---|---|
-| POST | `/face/register` | Save face embeddings during registration |
-| POST | `/face/verify` | Match frames against one employee's registered face |
-| POST | `/face/identify` | 1:N match against all registered faces |
-| GET | `/face/status/{card_no}` | Whether an employee has a registered face |
-| DELETE | `/face/delete/{card_no}` | Soft-delete (`IS_ACTIVE='N'`) |
+| Method | Path | What it does | Status |
+|---|---|---|---|
+| POST | `/face/register` | Save face embeddings during registration | ✅ **Ported (Stub)** |
+| POST | `/face/verify` | Match frames against one employee's registered face | ✅ **Ported (Stub)** |
+| POST | `/face/identify` | 1:N match against all registered faces | ✅ **Ported (Stub)** |
+| GET | `/face/status/{card_no}` | Whether an employee has a registered face | ✅ **Ported** |
+| DELETE | `/face/delete/{card_no}` | Soft-delete (`IS_ACTIVE='N'`) | ✅ **Ported** |
 
-`Node-LMS-Backend/src/services/face.service.js` exists and is a faithful port of FastAPI's `face_service.py`/`face_repository.py` register/status logic — but it is **only wired into `POST /hr/face/enroll`** (the HR-admin-initiated enrollment flow). None of the 5 standalone endpoints above have a Node route, controller, or even a service export (`verifyFace`, `identifyFace`, `deleteFace`, and the "list all registered employees" query needed for 1:N search are all absent from `face.service.js`). A client (mobile app) pointed at the Node server for self-service face register/verify/identify/status/delete would get a 404 on all five.
+✅ **[RESOLVED]** All 5 standalone endpoints from `LMS-Backend`'s `face_router.py` have been implemented 1-to-1 in Node.js (`face.routes.js`). These maintain the exact same stubbed behavior (updating `FACE_REGISTERED` flags without real embedding processing) as the main Python backend, matching its original design.
 
-Separately, the standalone **`LMS-Face-Backend`** microservice (`face_rec/api.py`, InsightFace/FAISS-backed, its own FastAPI app) implements real face matching for its own `/face/register|verify|identify|status|delete` routes — but `LMS-Backend` never calls it (no HTTP client call to it anywhere in the FastAPI source), so it's an entirely separate system, out of scope for this Node port, not a "hidden" implementation of `face_router.py`.
+Separately, the standalone **`LMS-Face-Backend`** microservice (`face_rec/api.py`, InsightFace/FAISS-backed, its own FastAPI app) implements real face matching for its own `/face/register|verify|identify|status|delete` routes on port `8002`. That microservice remains Python-based (due to FAISS/InsightFace dependencies) and continues to serve the real AI functionality out-of-band.
 
 ---
 
@@ -275,5 +275,5 @@ Frontend (`LMS-Web`) talks to the FastAPI backend at `BACKEND_URL=http://163.61.
 7. **Port the period/financial-year-locking subset of `payroll_router.py`** as a prerequisite for #6 (it's the gating mechanism, and the salary-processing endpoint is separable and can be deferred).
 8. **Defer `POST /payroll/salary/process`, the recruitment AI-matching/CV pipeline, and the recruitment background-task-based `apply` endpoint** — these depend on external systems (PL/SQL stored proc with internal commit; LLM evaluator; filesystem CV watcher) and need an architecture decision (how does Express replace FastAPI `BackgroundTasks`?) before porting, not just translation.
 ~~9. **Port `location-tracking` geofence + settings endpoints** if any mobile client is actually live against the Node backend — this is a safety-relevant gap, not a nice-to-have, if mobile attendance geofencing is meant to work through Node.~~ ✅ **DONE**
-10. **Decide the fate of standalone `/face/*`** — either implement the 4 missing service functions (`verifyFace`, `identifyFace`, `deleteFace`, list-all-registered) on top of the existing `face.service.js` foundation, or confirm the mobile app will keep using `LMS-Face-Backend` directly and treat this as intentionally out of scope.
+~~10. **Decide the fate of standalone `/face/*`** — either implement the 4 missing service functions (`verifyFace`, `identifyFace`, `deleteFace`, list-all-registered) on top of the existing `face.service.js` foundation, or confirm the mobile app will keep using `LMS-Face-Backend` directly and treat this as intentionally out of scope.~~ ✅ **DONE**
 ~~11. Low-priority SQL correctness fixes (§5.7–5.10) can be batched together since they're all "add a missing COMPC scope / LTRIM / correct join column" style one-liners.~~ ✅ **DONE**
