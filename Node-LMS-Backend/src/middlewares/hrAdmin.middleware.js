@@ -6,7 +6,7 @@ export const requireHrAdmin = async (req, res, next) => {
   try {
     connection = await getDirectConnection();
 
-    const { admin_card_no } = res.locals.validated.query;
+    const admin_card_no = req.query?.admin_card_no || req.body?.admin_card_no || res.locals?.validated?.query?.admin_card_no;
 
     let mobile = "";
     let empcode = "";

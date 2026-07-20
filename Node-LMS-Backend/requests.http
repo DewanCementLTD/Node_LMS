@@ -1,222 +1,478 @@
-###############################################################################
-# DCL LMS — Node backend REST Client request collection
-#
-# HOW TO USE
-#   1. Install the VS Code extension "REST Client" (humao.rest-client).
-#   2. Start the Node server:  npm run dev   (defaults to http://localhost:8000)
-#   3. Click the "Send Request" codelens that appears above each ### request.
-#
-# Variables below can be edited once and are reused by every request.
-# Requests are grouped by the router they are mounted on: /app, /auth, /hr, /hrms.
-# HR-admin routes require a valid admin_card_no (an ULEVL user in SEC_USERNAME).
-###############################################################################
+@localUrl = http://localhost:8000
+@liveUrl = https://hrms.sysnovix.com/api
 
-@baseUrl = http://localhost:8000
+@admin_card = 100001.1
+@compc = 1
+@brnch = 1
 
-# --- Common sample identifiers (edit to match your DB) -----------------------
-@adminCard   = 100001.1
-@empCard     = 100660.1
-@empcode     = 100011
-@phone       = 03363052865
-@fromDate    = 2026-06-01
-@toDate      = 2026-06-30
-@date        = 2026-07-01
-@rosterMonth = MAY-26
+### ============================================================================
+### RECRUITMENT MODULE (PART A: STANDARD ATS CRUD)
+### ============================================================================
 
-
-###############################################################################
-# APP  (mounted at /app)  —  src/routes/appVersion.routes.js
-###############################################################################
-
-### App root (stub handler)
-GET {{baseUrl}}/app
-
-
-###############################################################################
-# AUTH  (mounted at /auth)  —  src/routes/auth.routes.js
-###############################################################################
-
-### Login
-POST {{baseUrl}}/auth/login
+### 1. Create Job (Local) [x]
+POST {{localUrl}}/recruitment/jobs?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
 Content-Type: application/json
 
 {
-  "username": "3458000041",
-  "password": "abcd1234"
+    "job_title": "Senior Software Engineer",
+    "dept_no": 10,
+    "open_positions": 2,
+    "job_desc": "Develop and maintain web applications.",
+    "skills_req": "Node.js, React, SQL",
+    "employment_type": "Full-Time",
+    "work_mode": "Hybrid",
+    "nice_to_have_skills": "AWS, Docker",
+    "min_experience_years": 5,
+    "education_req": "Bachelors in CS",
+    "salary_min": 100000,
+    "salary_max": 150000
 }
 
-### Profile by card_no
-GET {{baseUrl}}/auth/profile/{{empCard}}
-
-### Lookup employee by phone (no auth)
-GET {{baseUrl}}/auth/lookup/{{phone}}
-
-### Change password
-POST {{baseUrl}}/auth/change-password/{{empCard}}
+### 1. Create Job (Live) [x]
+POST {{liveUrl}}/recruitment/jobs?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
 Content-Type: application/json
 
 {
-  "old_password": "abcd1234",
-  "new_password": "newpass1"
+    "job_title": "Senior Software Engineer",
+    "dept_no": 10,
+    "open_positions": 2,
+    "job_desc": "Develop and maintain web applications.",
+    "skills_req": "Node.js, React, SQL",
+    "employment_type": "Full-Time",
+    "work_mode": "Hybrid",
+    "nice_to_have_skills": "AWS, Docker",
+    "min_experience_years": 5,
+    "education_req": "Bachelors in CS",
+    "salary_min": 100000,
+    "salary_max": 150000
 }
 
-### Employee self-service dashboard
-GET {{baseUrl}}/auth/dashboard/{{empCard}}
 
-# --- Attendance --------------------------------------------------------------
+### 2. List Jobs (Local) [x]
+GET {{localUrl}}/recruitment/jobs?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
 
-### Face attendance (smart check-in / check-out)
-POST {{baseUrl}}/auth/attendance/face
+### 2. List Jobs (Live) [x]
+GET {{liveUrl}}/recruitment/jobs?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+
+
+### 3. Get Job (Local) [x]
+@jobId = 105
+GET {{localUrl}}/recruitment/jobs/{{jobId}}?admin_card_no={{admin_card}}
+
+### 3. Get Job (Live) [x]
+GET {{liveUrl}}/recruitment/jobs/{{jobId}}?admin_card_no={{admin_card}}
+
+
+### 4. Update Job (Local) [x]
+PUT {{localUrl}}/recruitment/jobs/{{jobId}}?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
 Content-Type: application/json
 
 {
-  "card_no": "{{empCard}}",
-  "attendance_type": "check_in",
-  "latitude": 24.8607,
-  "longitude": 67.0011
+    "status": "OPEN",
+    "open_positions": 4,
+    "salary_max": 160000
 }
 
-### Attendance summary (aggregated stats for a range)
-GET {{baseUrl}}/auth/attendance/summary?emp_pk={{empCard}}&from_date={{fromDate}}&to_date={{toDate}}
-
-### Attendance report — date range (one row per day)
-GET {{baseUrl}}/auth/attendance/report-range/{{empCard}}?from_date=2026-01-01&to_date=2026-07-31
-
-### Attendance report — single day
-GET {{baseUrl}}/auth/attendance/report/{{empCard}}/2026-06-29
-
-### Manual attendance (smart check-in / check-out)
-POST {{baseUrl}}/auth/attendance/{{empCard}}
+### 4. Update Job (Live) [x]
+PUT {{liveUrl}}/recruitment/jobs/{{jobId}}?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
 Content-Type: application/json
 
 {
-  "latitude": 24.8607,
-  "longitude": 67.0011
+    "status": "OPEN",
+    "open_positions": 3,
+    "salary_max": 170000
 }
 
-# --- Leave -------------------------------------------------------------------
 
-### Leave balances
-GET {{baseUrl}}/auth/leave-balances/{{empCard}}
-
-### Leave types (full LOV merged with balances)
-GET {{baseUrl}}/auth/leave-types/{{empCard}}
-
-### Leave status (application history)
-GET {{baseUrl}}/auth/leave-status/{{empCard}}
-
-### Apply leave
-POST {{baseUrl}}/auth/apply-leave/{{empCard}}
+### 5. Create Candidate (Local) [x]
+POST {{localUrl}}/recruitment/candidates?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
 Content-Type: application/json
 
 {
-  "leave_type_id": 1,
-  "from_date": "2026-07-05",
-  "to_date": "2026-07-06",
-  "reason": "Personal",
-  "half_day": false
+    "candidate_name": "Testing Doe",
+    "email": "johndoe@example.com",
+    "mobile": "1234567890",
+    "location": "New York",
+    "preferred_job_title": "Software Engineer",
+    "profile_summary": "Experienced engineer with a passion for scalable systems.",
+    "skills": ["JavaScript", "Node.js", "React"],
+    "education": [
+        {
+            "institution": "State University",
+            "degree": "B.S. Computer Science",
+            "graduation_year": "2015"
+        }
+    ],
+    "experience": [
+        {
+            "company": "Tech Corp",
+            "role": "Backend Developer",
+            "duration": "2016-2020",
+            "description": "Developed microservices."
+        }
+    ]
 }
 
-# --- Location (HR-admin for report/summary/history) --------------------------
-
-### Location batch upload (employee)
-POST {{baseUrl}}/auth/location/batch
+### 5. Create Candidate (Live) [x]
+POST {{liveUrl}}/recruitment/candidates?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
 Content-Type: application/json
 
 {
-  "card_no": "100002.1",
-  "locations": [
-    { "latitude": 24.8607, "longitude": 67.0011, "accuracy": 10.0, "recorded_at": "2026-07-01T09:00:00Z" },
-    { "latitude": 24.8615, "longitude": 67.0025, "accuracy": 8.5,  "recorded_at": "2026-07-01T09:05:00Z" }
-  ]
+    "candidate_name": "Testing Doe",
+    "email": "johndoe@example.com",
+    "mobile": "1234567890",
+    "location": "New York",
+    "preferred_job_title": "Software Engineer",
+    "profile_summary": "Experienced engineer with a passion for scalable systems.",
+    "skills": ["JavaScript", "Node.js", "React"],
+    "education": [
+        {
+            "institution": "State University",
+            "degree": "B.S. Computer Science",
+            "graduation_year": "2015"
+        }
+    ],
+    "experience": [
+        {
+            "company": "Tech Corp",
+            "role": "Backend Developer",
+            "duration": "2016-2020",
+            "description": "Developed microservices."
+        }
+    ]
 }
 
-### Location report — summary (HR-admin)
-GET {{baseUrl}}/auth/location/report/summary?from_date=2026-07-01&to_date=2026-07-31&admin_card_no={{adminCard}}
 
-### Location report — trail (HR-admin)
-GET {{baseUrl}}/auth/location/report/trail?from_date=2026-07-01&to_date=2026-07-31&admin_card_no={{adminCard}}
+### 6. List Candidates (Local) [x]
+GET {{localUrl}}/recruitment/candidates?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
 
-### Location summary for a day (HR-admin)
-GET {{baseUrl}}/auth/location/summary?date={{date}}&admin_card_no={{adminCard}}
-
-### Location history for one employee (HR-admin)
-GET {{baseUrl}}/auth/location/history/100002.1?date={{date}}&admin_card_no={{adminCard}}
+### 6. List Candidates (Live) [x]
+GET {{liveUrl}}/recruitment/candidates?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
 
 
-###############################################################################
-# HR  (mounted at /hr)  —  src/routes/hr.routes.js   [HR-admin]
-###############################################################################
+### 7. Get Candidate (Local) [x]
+@candidateId = 36
+GET {{localUrl}}/recruitment/candidates/{{candidateId}}?admin_card_no={{admin_card}}
 
-### HR employee search (whole EMPLOYEE view, NOT company/branch scoped)
-GET {{baseUrl}}/hr/employees/search?q=Saad&admin_card_no={{adminCard}}
+### 7. Get Candidate (Live) [x]
+GET {{liveUrl}}/recruitment/candidates/{{candidateId}}?admin_card_no={{admin_card}}
 
-### HR face enrollment (requires >= 10 frames; base64 JPEGs in real use)
-POST {{baseUrl}}/hr/face/enroll?admin_card_no={{adminCard}}
+
+### 8. Update Candidate (Local) [x]
+PUT {{localUrl}}/recruitment/candidates/{{candidateId}}?admin_card_no={{admin_card}}
 Content-Type: application/json
 
 {
-  "card_no": "{{empCard}}",
-  "frames": ["f1","f2","f3","f4","f5","f6","f7","f8","f9","f10"]
+    "email": "San Francisco",
+    "skills": ["JavaScript", "Node.js", "React", "AWS"]
 }
 
-
-###############################################################################
-# HRMS  (mounted at /hrms)  —  src/routes/hrms.routes.js   [HR-admin]
-###############################################################################
-
-# --- Dashboard ---------------------------------------------------------------
-
-### HRMS dashboard analytics
-GET {{baseUrl}}/hrms/dashboard/analytics?admin_card_no={{adminCard}}&date={{date}}
-
-### HRMS dashboard
-GET {{baseUrl}}/hrms/dashboard?admin_card_no={{adminCard}}&date={{date}}
-
-# --- Attendance reports ------------------------------------------------------
-
-### Bulk attendance summary (per-employee)
-GET {{baseUrl}}/hrms/attendance/bulk?admin_card_no={{adminCard}}&from_date={{fromDate}}&to_date={{toDate}}
-
-### Attendance details
-GET {{baseUrl}}/hrms/attendance/details?admin_card_no={{adminCard}}&from_date={{fromDate}}&to_date={{toDate}}
-
-# --- Employees ---------------------------------------------------------------
-
-### Search employees (company/branch scoped)
-GET {{baseUrl}}/hrms/employees/search?q=ali&admin_card_no={{adminCard}}
-
-### Employee ID card (resolved names for printing)
-GET {{baseUrl}}/hrms/employees/{{adminCard}}/card?admin_card_no={{adminCard}}
-
-### Get one employee (extended)
-GET {{baseUrl}}/hrms/employees/{{empCard}}?admin_card_no={{adminCard}}
-
-### Update employee
-PUT {{baseUrl}}/hrms/employees/{{empcode}}?admin_card_no={{adminCard}}
+### 8. Update Candidate (Live) [x]
+PUT {{liveUrl}}/recruitment/candidates/{{candidateId}}?admin_card_no={{admin_card}}
 Content-Type: application/json
 
 {
-  "mobile": "03001234567",
-  "email": "a@b.com"
+    "email": "saadkahliad1604@gmail.com",
+    "skills": ["JavaScript", "Node.js", "React", "AWS"]
 }
 
-### List employees (status: A active, I inactive, L left)
-GET {{baseUrl}}/hrms/employees?admin_card_no={{adminCard}}&status=A
 
-### Register employee
-POST {{baseUrl}}/hrms/employees?admin_card_no={{adminCard}}
+### 9. Create Application (Local) [x]
+POST {{localUrl}}/recruitment/applications?admin_card_no={{admin_card}}
 Content-Type: application/json
 
 {
-  "name": "Test Employee",
-  "unit_id": 1,
-  "status": "A",
-  "mobile": "03001234567",
-  "email": "test@dewan.com"
+    "job_id": {{jobId}},
+    "candidate_id": {{candidateId}},
+    "source": "LinkedIn",
+    "notes": "Strong candidate."
 }
 
-# --- Duty roster (read-only, ERP-owned) --------------------------------------
+### 9. Create Application (Live) [x]
+POST {{liveUrl}}/recruitment/applications?admin_card_no={{admin_card}}
+Content-Type: application/json
 
-### Employee duty roster for a month
-GET {{baseUrl}}/hrms/duty-roster/100108.1?admin_card_no={{adminCard}}&month={{rosterMonth}}
+{
+    "job_id": {{jobId}},
+    "candidate_id": {{candidateId}},
+    "source": "LinkedIn",
+    "notes": "Strong candidate."
+}
+
+
+### 10. List Applications (Local) [x]
+GET {{localUrl}}/recruitment/applications?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+
+### 10. List Applications (Live) [x]
+GET {{liveUrl}}/recruitment/applications?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+
+
+### 11. Get Application (Local) [x]
+@appId = 71
+GET {{localUrl}}/recruitment/applications/{{appId}}?admin_card_no={{admin_card}}
+
+### 11. Get Application (Live) [x]
+GET {{liveUrl}}/recruitment/applications/{{appId}}?admin_card_no={{admin_card}}
+
+
+### 12. Update Application Status (Local) [x]
+PATCH {{localUrl}}/recruitment/applications/{{appId}}/status?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "status": "SHOTLISTED",
+    "notes": "Passed initial screening."
+}
+
+### 12. Update Application Status (Live) [x]
+PATCH {{liveUrl}}/recruitment/applications/{{appId}}/status?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "status": "SHORTLISTED",
+    "notes": "Passed initial screening."
+}
+
+
+### 13. Create Interview (Local) [x]
+POST {{localUrl}}/recruitment/interviews?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "app_id": {{appId}},
+    "interview_date": "2026-08-01",
+    "start_time": "10:00 AM",
+    "end_time": "11:00 AM",
+    "interview_type": "Technical",
+    "interview_mode": "Online",
+    "location_or_link": "https://zoom.us/j/123456789"
+}
+
+### 13. Create Interview (Live) [x]
+POST {{liveUrl}}/recruitment/interviews?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "app_id": {{appId}},
+    "interview_date": "2026-08-01",
+    "start_time": "10:00 AM",
+    "end_time": "11:00 AM",
+    "interview_type": "Technical",
+    "interview_mode": "Online",
+    "location_or_link": "https://zoom.us/j/123456789"
+}
+
+
+### 14. List Interviews (Local) [x]
+GET {{localUrl}}/recruitment/interviews?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+
+### 14. List Interviews (Live) [x]
+GET {{liveUrl}}/recruitment/interviews?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+
+
+### 15. Update Interview (Local) [x]
+@interviewId = 121
+PATCH {{localUrl}}/recruitment/interviews/{{interviewId}}?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "status": "COMPLETED",
+    "feedback": "Good technical skills.",
+    "score": 8
+}
+
+### 15. Update Interview (Live) [x]
+PATCH {{liveUrl}}/recruitment/interviews/{{interviewId}}?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "status": "COMPLETED",
+    "feedback": "Good technical skills.",
+    "score": 8
+}
+
+
+### 16. Create Offer (Local) [x]
+POST {{localUrl}}/recruitment/offers?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "app_id": {{appId}},
+    "salary_offered": 140000,
+    "notes": "Includes signing bonus."
+}
+
+### 16. Create Offer (Live) [x]
+POST {{liveUrl}}/recruitment/offers?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "app_id": {{appId}},
+    "salary_offered": 190000,
+    "notes": "Includes signing bonus."
+}
+
+
+### 17. List Offers (Local) [x]
+GET {{localUrl}}/recruitment/offers?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+
+### 17. List Offers (Live) [x]
+GET {{liveUrl}}/recruitment/offers?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+
+
+### 18. Update Offer (Local) [x]
+@offerId = 81
+PATCH {{localUrl}}/recruitment/offers/{{offerId}}?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "status": "ACCEPTED",
+    "notes": "Candidate negotiated start date."
+}
+
+### 18. Update Offer (Live) [x]
+PATCH {{liveUrl}}/recruitment/offers/{{offerId}}?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "status": "SENT",
+    "notes": ""
+}
+
+
+### 19. Get Analytics (Local) [x]
+GET {{localUrl}}/recruitment/analytics?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+
+### 19. Get Analytics (Live) [x]
+GET {{liveUrl}}/recruitment/analytics?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+
+
+### 20. List Panel Pool (Local) [x]
+GET {{localUrl}}/recruitment/panel-pool?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+
+### 20. List Panel Pool (Live) [x]
+GET {{liveUrl}}/recruitment/panel-pool?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+
+
+### 21. Add Panel Members (Local) [x]
+POST {{localUrl}}/recruitment/panel-pool?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+Content-Type: application/json
+
+{
+    "empcodes": ["100660.1", "100002.1"]
+}
+
+### 21. Add Panel Members (Live) [x]
+POST {{liveUrl}}/recruitment/panel-pool?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+Content-Type: application/json
+
+{
+    "empcodes": ["100660.1", "100002.1"]
+}
+
+
+### 22. Deactivate Panel Row (Local) [x]
+@panelId = 69
+DELETE {{localUrl}}/recruitment/panel-pool/{{panelId}}?admin_card_no={{admin_card}}
+
+### 22. Deactivate Panel Row (Live) [x]
+DELETE {{liveUrl}}/recruitment/panel-pool/{{panelId}}?admin_card_no={{admin_card}}
+
+
+### 23. Deactivate Panel Member (Local) [x]
+POST {{localUrl}}/recruitment/panel-pool/deactivate?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+Content-Type: application/json
+
+{
+    "empcode": "100001.1"
+}
+
+### 23. Deactivate Panel Member (Live) [x]
+POST {{liveUrl}}/recruitment/panel-pool/deactivate?admin_card_no={{admin_card}}&compc={{compc}}&brnch={{brnch}}
+Content-Type: application/json
+
+{
+    "empcode": "100001.1"
+}
+
+
+### 24. Get Panel Options for Application (Local) [x]
+GET {{localUrl}}/recruitment/applications/{{appId}}/panel-options?admin_card_no={{admin_card}}
+
+### 24. Get Panel Options for Application (Live) [-]
+GET {{liveUrl}}/recruitment/applications/{{appId}}/panel-options?admin_card_no={{admin_card}}
+
+
+### 25. List Notification Templates (Local) [x]
+GET {{localUrl}}/recruitment/notification-templates?admin_card_no={{admin_card}}
+
+### 25. List Notification Templates (Live) [x]
+GET {{liveUrl}}/recruitment/notification-templates?admin_card_no={{admin_card}}
+
+
+### 26. Create Interview Assignments (Local) [x]
+POST {{localUrl}}/recruitment/applications/{{appId}}/interview-assignments?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "empcodes": ["100001.1", "100644.1"],
+    "interview_type": "Technical",
+    "interview_date": "2026-08-01",
+    "start_time": "10:00",
+    "end_time": "11:00"
+}
+
+### 26. Create Interview Assignments (Live) [x]
+POST {{liveUrl}}/recruitment/applications/{{appId}}/interview-assignments?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "empcodes": ["100001.1", "100644.1"],
+    "interview_type": "Technical",
+    "interview_date": "2026-08-01",
+    "start_time": "10:00",
+    "end_time": "11:00"
+}
+
+
+### 27. List Interview Assignments (Local) [x]
+GET {{localUrl}}/recruitment/applications/{{appId}}/interview-assignments?admin_card_no={{admin_card}}
+
+### 27. List Interview Assignments (Live) [x]
+GET {{liveUrl}}/recruitment/applications/{{appId}}/interview-assignments?admin_card_no={{admin_card}}
+
+
+### 28. Create Notification Selections (Local) [x]
+POST {{localUrl}}/recruitment/applications/{{appId}}/notification-selections?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "selections": [
+        {
+            "template_id": 1,
+            "notification_type": "EMAIL",
+            "recipient_type": "CANDIDATE"
+        }
+    ]
+}
+
+### 28. Create Notification Selections (Live) [x]
+POST {{liveUrl}}/recruitment/applications/{{appId}}/notification-selections?admin_card_no={{admin_card}}
+Content-Type: application/json
+
+{
+    "selections": [
+        {
+            "template_id": 1,
+            "notification_type": "EMAIL",
+            "recipient_type": "CANDIDATE"
+        }
+    ]
+}
+
+
+### 29. List Notification Selections (Local) [x]
+GET {{localUrl}}/recruitment/applications/{{appId}}/notification-selections?admin_card_no={{admin_card}}
+
+### 29. List Notification Selections (Live) [x]
+GET {{liveUrl}}/recruitment/applications/{{appId}}/notification-selections?admin_card_no={{admin_card}}

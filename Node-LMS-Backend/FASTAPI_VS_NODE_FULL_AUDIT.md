@@ -14,14 +14,14 @@ This document **supersedes** the previous `route_gap_analysis.md` in this repo �
 | Metric | Value |
 |---|---|
 | Total FastAPI endpoints (13 routers + face microservice) | ~160 (155 in LMS-Backend's 13 routers + 5 in the separate LMS-Face-Backend microservice) |
-| Fully missing in Node (entire module) | **Payroll (28), Payroll-Entry (18), Recruitment (36)** = **82 endpoints, ~51% of all FastAPI routes** |
-| Individually missing endpoints in otherwise-ported modules | 0 (✅ **Fully Resolved** — `PUT /hrms/duty-roster/entry/{pk}` and `reference/interview-types` endpoints are now implemented) |
+| Fully missing in Node (entire module) | **Payroll (28), Payroll-Entry (18)** = **46 endpoints, ~30% of all FastAPI routes** |
+| Individually missing endpoints in otherwise-ported modules | **7** in Recruitment (AI/CV specific routes) |
 | Endpoints ported and functionally equivalent | The bulk of `auth`, `attendance`, `location`, `location-tracking`, `documents`, `hr`, `hrms`, `reference`, `app_version` |
 | New, real bugs found in *ported* code (not just gaps) | **1** — see §5. (12 out of the 13 previously identified bugs have been completely resolved, leaving only the DOCS_ROOT environment variable issue). |
 | Endpoints confirmed actively used by LMS-Web | The large majority of `hrms`, `payroll`, `payroll-entry`, `recruitment`, `reference` calls (once ported) plus core `auth`/`attendance`/`documents`/`location` flows |
 | Endpoints confirmed **dead** even in FastAPI/LMS-Web today | All of `face_router` (5), all of `app_version_router` (2, mobile-only), 4/5 `location_tracking_router`, `/auth/lookup/{phone}`, 3 attendance endpoints (face-punch, manual-punch, single-day report), ~12 payroll/recruitment/reference functions that are defined but never called |
 
-**Bottom line:** The Node port is functionally solid for the employee self-service and HR-admin "core HR" surface (auth, attendance, leave, documents, location live-tracking, location-tracking/geofence, employee CRUD, reference data). **Payroll, payroll-entry, and recruitment are 0% ported** — and those three modules are the ones most heavily used by the live web app's HR-admin panels. All previously identified critical bugs in auth/attendance/location have been resolved.
+**Bottom line:** The Node port is functionally solid for the employee self-service and HR-admin "core HR" surface (auth, attendance, leave, documents, location live-tracking, location-tracking/geofence, employee CRUD, reference data). **Payroll and payroll-entry are 0% ported**, while **Recruitment is partially ported (29/36 endpoints)**. These three modules are the ones most heavily used by the live web app's HR-admin panels. All previously identified critical bugs in auth/attendance/location have been resolved.
 
 ---
 
@@ -54,7 +54,7 @@ FastAPI mount prefixes were confirmed from `LMS-Backend/main.py`'s `app.include_
 | `reference_router.py` | `/reference` | 37 | 37/37 | ✅ Fully ported (Interview types functionality restored) |
 | `payroll_router.py` | `/payroll` | 28 | **0/28** | ❌ **Completely missing** |
 | `payroll_entry_router.py` | `/payroll-entry` | 18 | **0/18** | ❌ **Completely missing** |
-| `recruitment_router.py` | `/recruitment` | 36 | **0/36** | ❌ **Completely missing** |
+| `recruitment_router.py` | `/recruitment` | 36 | **29/36** | ⚠️ **Partially ported** (AI/CV routes pending) |
 | `LMS-Face-Backend` (separate microservice) | `/face/*` (own app) | 5 | N/A | Out of scope — never called by `LMS-Backend` either; independent InsightFace/FAISS service |
 
 Corrections to the prior `route_gap_analysis.md`:
@@ -126,14 +126,40 @@ All mutating endpoints here key off the currently **open period** managed by `/p
 
 ### 4.3 Recruitment (`/recruitment/*`) — 36 endpoints
 
-Full applicant-tracking system: jobs, AI-based candidate matching/scoring, applications, interviews (with 409 double-booking conflict detection), interview panel pool, notification templates/selections, offers, CV bulk upload (feeds an **external AI screening pipeline** watching a filesystem drop folder), candidate talent pool, and recruitment analytics. See the standalone detail table in the original agent report for the full per-endpoint list (all 36 confirmed missing) — key highlights:
+Full applicant-tracking system: jobs, AI-based candidate matching/scoring, applications, interviews (with 409 double-booking conflict detection), interview panel pool, notification templates/selections, offers, CV bulk upload (feeds an **external AI screening pipeline** watching a filesystem drop folder), candidate talent pool, and recruitment analytics.
 
-- `POST /recruitment/jobs/{job_id}/match` and `GET /recruitment/jobs/{job_id}/top-candidates` — LLM-backed matching, depends on an external `AI/` pipeline directory, not pure CRUD.
-- `POST /recruitment/candidates/upload-cvs` — drops PDFs into `EMP_DOCS/<Company>/<Branch>/RECRUITMENT_CVS/...`, watched asynchronously by an out-of-band process not part of this router's code at all.
-- `POST /recruitment/candidates/{candidate_id}/apply` — uses FastAPI `BackgroundTasks` to fire an async AI evaluation; Express has no direct equivalent (would need `setImmediate`/a queue).
-- `POST /recruitment/applications/{app_id}/interview-assignments` — real conflict-detection business logic (409 on double-booking), not a passthrough insert.
+✅ **29/36 endpoints (Standard ATS CRUD) have been successfully ported to Node.js** (`recruitment.routes.js`, `recruitment.controller.js`, `recruitment.service.js`):
+- **Jobs:** list, create, get, update
+- **Applications:** list, create, get, patch status
+- **Interviews:** list, create, patch
+- **Interview Panel / Assignments:** panel pool (list, add, deactivate row, deactivate member), app panel options, assignments (create, list)
+- **Notification Templates / Selections:** list templates, selections (create, list)
+- **Offers:** list, create, update
+- **Analytics:** get analytics
+- **Candidates (Talent Pool):** list, create, get, update
 
-Both `payroll_router.py` and `recruitment_router.py` share company/branch-scoping helpers with `hrms_router.py` (`_resolve_filter_lists`/`_get_admin_rights`). Node already has `services/adminRights.service.js`, which is the likely Node analog — reusing it would meaningfully de-risk porting either module instead of re-deriving scoping logic from scratch.
+❌ **7/36 endpoints (AI Pipeline & CV Uploads) are pending:**
+These remaining endpoints require interacting with the filesystem and the standalone Python LLM pipeline (`LMS-Backend/AI/` directory). Porting these requires architectural decisions on whether to port the Gemini LLM logic natively to Node.js or spawn/integrate with the existing Python watchdog daemon.
+
+| Method | Path | Why it's pending / Needs to be made |
+|---|---|---|
+| POST | `/recruitment/candidates/upload-cvs` | Drops PDFs into `EMP_DOCS/.../RECRUITMENT_CVS/`, watched asynchronously by an out-of-band python daemon. Requires `multer` setup for Node.js multipart form-data. |
+| GET | `/recruitment/candidates/cv-status` | Reads file statuses from the buffer and archive directories. |
+| POST | `/recruitment/candidates/{candidate_id}/cv` | Single CV upload. Requires `multer` in Node.js. |
+| GET | `/recruitment/candidates/{candidate_id}/cv` | Download CV endpoint. Requires `res.download` implementation with accurate absolute path resolution. |
+| POST | `/recruitment/candidates/{candidate_id}/apply` | Kicks off AI evaluation via background task. Express has no direct equivalent to FastAPI `BackgroundTasks`, so it requires an async `Promise.resolve().then(...)` or dedicated worker queue. |
+| POST | `/recruitment/jobs/{job_id}/match` | Triggers the LLM-backed candidate matcher in Python which mutates candidates arrays in-place using threading. |
+| GET | `/recruitment/jobs/{job_id}/top-candidates` | Fetches the AI shortlist evaluations for a job. |
+
+**Details & Issues Resolved in Node.js Recruitment Porting:**
+During the porting of the Part A Recruitment endpoints, several critical issues were identified and successfully resolved to achieve 1:1 parity with the FastAPI implementation:
+1. **`ORA-00942: table or view does not exist` (Notification Selections):** The Node.js port initially attempted to write to a non-existent `RECRUITMENT_` alias. This was fixed by mapping queries and inserts to the correct `APP_NOTIFICATION_MESSAGES` table.
+2. **`ORA-01745: invalid host/bind variable name` (Interview Assignments):** The date/time bindings in the SQL query for `APP_INTERVIEW_ASSIGNMENTS` had mismatched parameter counts. The bind parameters and SQL statement were corrected to seamlessly insert interview assignments.
+3. **Empty Array on GET Requests:** Endpoints like `listInterviewAssignments` and `listNotificationSelections` originally returned empty responses due to querying the wrong aliases. Fixed by writing raw accurate SELECT statements against the DB.
+4. **Incorrect "Added By" Audit Logs (`addPanelMembers`):** The admin tracker was defaulting to `SYSTEM` instead of logging the `admin_card`. Fixed by propagating the `admin_card` query parameter correctly from the controller layer down to the service layer.
+5. **CLOB String Extraction Error (`Cannot read properties of undefined reading 'BIND_OUT'`):** Encountered when attempting to extract profile data in `createCandidate`. Fixed by correctly configuring the Oracle DB `fetchInfo: { "FIELD_NAME": { type: oracledb.STRING } }` parameters to handle CLOB mapping in Node.js `oracledb`.
+6. **Template Rendering Logic:** The Python `_render` (template placeholder substitution), `_fmtDuration`, and `_messageContext` extraction routines used for dynamic email generation were completely recreated in Node.js, ensuring identical notification messaging.
+7. **Scope Alignment:** Repurposed Node's `adminRights.service.js` equivalent scoping (`compc` and `brnch` logic) across the recruitment routes, perfectly mirroring FastAPI's `_resolve_filter_lists` logic.
 
 ### 4.4 Location-Tracking (`/location-tracking/*`) — 5 endpoints (✅ **Fully Ported**)
 

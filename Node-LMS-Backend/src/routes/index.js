@@ -7,6 +7,7 @@ import hrmsRoutes from './hrms.routes.js';
 import referenceRoutes from './reference.routes.js';
 import locationTrackingRoutes from './locationTracking.routes.js';
 import faceRoutes from './face.routes.js';
+import recruitmentRoutes from './recruitment.routes.js';
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use('/hrms', hrmsRoutes); // http://localhost:8000/hrms/* (HR-admin: empl
 router.use('/reference', referenceRoutes); // http://localhost:8000/reference/*
 router.use('/location-tracking', locationTrackingRoutes); // http://localhost:8000/location-tracking/*
 router.use('/face', faceRoutes); // http://localhost:8000/face/*
+router.use('/recruitment', recruitmentRoutes); // http://localhost:8000/recruitment/*
 
 export default router;

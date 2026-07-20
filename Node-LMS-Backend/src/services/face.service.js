@@ -177,6 +177,6 @@ export const identifyFace = async (frames) => {
     card_no: registered[0].card_no,
     emp_name: registered[0].emp_name,
     confidence: 0.92,
-    message: "Face identified successfully",
+    message: `Face identified as ${registered[0].emp_name}`,
   };
 };
