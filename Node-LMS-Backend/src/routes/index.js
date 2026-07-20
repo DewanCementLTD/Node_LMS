@@ -5,6 +5,7 @@ import documentsRoutes from './documents.routes.js';
 import hrRoutes from './hr.routes.js';
 import hrmsRoutes from './hrms.routes.js';
 import referenceRoutes from './reference.routes.js';
+import locationTrackingRoutes from './locationTracking.routes.js';
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use('/documents', documentsRoutes); // http://localhost:8000/documents/* 
 router.use('/hr', hrRoutes); // http://localhost:8000/hr/* (HR-admin: search + face enroll)
 router.use('/hrms', hrmsRoutes); // http://localhost:8000/hrms/* (HR-admin: employees, dashboard, attendance, roster)
 router.use('/reference', referenceRoutes); // http://localhost:8000/reference/*
+router.use('/location-tracking', locationTrackingRoutes); // http://localhost:8000/location-tracking/*
 
 export default router;
