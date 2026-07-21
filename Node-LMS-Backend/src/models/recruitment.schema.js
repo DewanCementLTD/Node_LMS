@@ -182,3 +182,19 @@ export const notificationSelectionsCreateSchema = z.object({
     selections: z.array(notificationSelectionItemSchema),
   }),
 });
+
+// Query-only schemas that enforce the numeric bounds FastAPI declares via
+// Query(..., ge=1, le=200). Only the query is validated; params/body pass through
+// the controller unchanged (unknown keys are stripped from res.locals.validated).
+export const matchQuerySchema = z.object({
+  query: z.object({
+    top: z.coerce.number().int().min(1).max(200).default(20),
+    deep: z.string().optional().nullable(),
+  }).loose(),
+});
+
+export const topCandidatesQuerySchema = z.object({
+  query: z.object({
+    top_k: z.coerce.number().int().min(1).max(200).optional(),
+  }).loose(),
+});

@@ -33,7 +33,7 @@ export const DOCS_BASE = path.dirname(DOCS_ROOT);
  * Make a string safe to use as a folder name: strip filesystem-illegal
  * characters, collapse whitespace, trim trailing dots/spaces. (mirror _safe_name)
  */
-const safeName = (name, fallback) => {
+export const safeName = (name, fallback) => {
   let s = String(name ?? '').replace(/[\\/:*?"<>|]+/g, ' ').trim();
   s = s.replace(/\s+/g, ' ').replace(/^[\s.]+|[\s.]+$/g, '');
   return s || fallback;

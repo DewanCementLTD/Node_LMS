@@ -11,3 +11,6 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // All document/photo/logo endpoints take a single file under the "file" field.
 export const uploadSingleFile = upload.single('file');
+
+// Bulk CV uploads take an array of files under the "files" field.
+export const uploadCvArray = upload.array('files', 20);

@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import * as recruitmentService from "../services/recruitment.service.js";
 import { resolveFilterLists } from "../services/adminRights.service.js";
 
@@ -18,6 +20,24 @@ const _getScope = async (req, res) => {
 
   const { finalCompanies, finalBranches } = await resolveFilterLists(admin_card, c, b);
   return { final_c: finalCompanies, final_b: finalBranches, req_c: c, admin_card };
+};
+
+// Port of FastAPI _require_candidate_access: 404 "Candidate not found" when the
+// candidate is missing OR belongs to a company outside the admin's scope (mirrors
+// the inline check used by getCandidate/updateCandidate). Returns the candidate
+// row on success, or null after having already sent the 404 response.
+const _requireCandidateAccess = async (req, res, candidateId) => {
+  const cand = await recruitmentService.getCandidate(candidateId);
+  if (!cand) {
+    res.status(404).json({ detail: "Candidate not found" });
+    return null;
+  }
+  const { final_c } = await _getScope(req, res);
+  if (final_c.length > 0 && cand.compc && !final_c.includes(String(cand.compc))) {
+    res.status(404).json({ detail: "Candidate not found" });
+    return null;
+  }
+  return cand;
 };
 
 // ===================================
@@ -384,6 +404,287 @@ export const listNotificationSelections = async (req, res, next) => {
     const { app_id } = req.params;
     const items = await recruitmentService.listNotificationSelections(app_id);
     res.json({ items: recruitmentService.lowerKeys(items) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+// ===================================
+// AI CV EVALUATION & MATCHING PIPELINE
+// ===================================
+
+
+
+export const matchCandidates = async (req, res, next) => {
+  try {
+    const { job_id } = req.params;
+    const { top = 20, deep = false } = req.query;
+    const { final_c, final_b } = await _getScope(req, res);
+    
+    let result;
+    if (deep === 'true' || deep === true) {
+      result = await recruitmentService.matchCandidatesDeep(job_id, top, final_c, final_b);
+    } else {
+      result = await recruitmentService.matchCandidatesForJob(job_id, top, final_c, final_b);
+    }
+    
+    if (result.status === "error") {
+      return res.status(404).json({ detail: result.message });
+    }
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const topCandidates = async (req, res, next) => {
+  try {
+    const { job_id } = req.params;
+    let top_k = req.query.top_k ? parseInt(req.query.top_k, 10) : parseInt(process.env.TOP_K || '10', 10);
+    const { final_c, final_b } = await _getScope(req, res);
+    
+    const result = await recruitmentService.rankJobApplicants(job_id, top_k, final_c, final_b);
+    if (result.status === "error") {
+      return res.status(404).json({ detail: result.message });
+    }
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getApplicationEvaluation = async (req, res, next) => {
+  try {
+    const { app_id } = req.params;
+    const app = await recruitmentService.getApplication(app_id);
+    if (!app) return res.status(404).json({ detail: "Application not found" });
+    
+    const ev = await recruitmentService.getApplicationEvaluation(app_id);
+    if (!ev) return res.status(404).json({ detail: "This application has not been AI-evaluated yet" });
+    
+    res.json(ev);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const safeCvFilename = (name) => {
+  const base = path.basename(name || "cv.pdf");
+  const ext = path.extname(base);
+  let stem = path.basename(base, ext) || "cv";
+  stem = stem.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "cv";
+  return `${stem}_${Date.now()}.pdf`;
+};
+
+const resolveDropDirs = async (req, res, job_id) => {
+  const { final_c, final_b, admin_card } = await _getScope(req, res);
+  let dirs;
+  
+  if (job_id) {
+    const scope = await recruitmentService.getJobScope(job_id);
+    if (!scope) throw { status: 404, detail: "Job not found" };
+    
+    const { finalCompanies } = await resolveFilterLists(admin_card, null, null);
+    if (finalCompanies.length > 0 && scope.compc !== null && !finalCompanies.includes(String(scope.compc))) {
+      throw { status: 404, detail: "Job not found" };
+    }
+    
+    dirs = await recruitmentService.jobCvDirs(job_id);
+    if (!dirs) throw { status: 404, detail: "Job not found" };
+  } else {
+    // If no compc is specified, use the first allowed company (same as python fallback)
+    let targetComp = req.query.compc || req.body?.compc;
+    const { finalCompanies, finalBranches } = await resolveFilterLists(admin_card, targetComp, null);
+    if (finalCompanies.length > 0 && (!targetComp || !finalCompanies.includes(String(targetComp)))) {
+      targetComp = finalCompanies[0];
+    }
+    
+    let targetBranch = req.query.brnch || req.body?.brnch;
+    if (finalBranches.length > 0 && (!targetBranch || !finalBranches.includes(String(targetBranch)))) {
+      targetBranch = null; // Default to company-wide for pool
+    }
+    
+    dirs = await recruitmentService.poolCvDirs(targetComp, targetBranch);
+  }
+  
+  fs.mkdirSync(dirs.buffer_dir, { recursive: true });
+  
+  try {
+    fs.writeFileSync(path.join(dirs.buffer_dir, "_scope.json"), JSON.stringify({
+      compc: dirs.compc,
+      brnch: dirs.brnch,
+      job_id: job_id ? parseInt(job_id, 10) : null
+    }));
+  } catch (e) {
+    // pass
+  }
+  
+  return dirs;
+};
+
+const writeCvToBuffer = async (bufferDir, file) => {
+  const ext = path.extname(file.originalname || "").replace(/^\./, "").toLowerCase();
+  if (ext !== "pdf") {
+    return { filename: file.originalname, saved_as: null, queued: false, error: "Only PDF CVs can be AI-screened" };
+  }
+  
+  const saved = safeCvFilename(file.originalname);
+  try {
+    fs.writeFileSync(path.join(bufferDir, saved), file.buffer);
+  } catch (e) {
+    return { filename: file.originalname, saved_as: null, queued: false, error: `Failed to queue: ${e.message}` };
+  }
+  return { filename: file.originalname, saved_as: saved, queued: true };
+};
+
+export const uploadCvs = async (req, res, next) => {
+  try {
+    const job_id = req.query.job_id ? parseInt(req.query.job_id, 10) : null;
+    const files = req.files || [];
+    
+    if (files.length === 0) {
+      return res.status(400).json({ detail: "No files uploaded" });
+    }
+    if (files.length > 20) {
+      return res.status(400).json({ detail: "Upload at most 20 CVs at once" });
+    }
+    
+    let dirs;
+    try {
+      dirs = await resolveDropDirs(req, res, job_id);
+    } catch (e) {
+      return res.status(e.status || 400).json({ detail: e.detail || e.message });
+    }
+    
+    const results = [];
+    for (const f of files) {
+      results.push(await writeCvToBuffer(dirs.buffer_dir, f));
+    }
+    
+    const queued = results.filter(r => r.queued).length;
+    res.json({ status: "success", job_id, queued, total: results.length, results });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const cvStatus = async (req, res, next) => {
+  try {
+    const job_id = req.query.job_id ? parseInt(req.query.job_id, 10) : null;
+    const filenamesStr = req.query.files || "";
+    
+    let dirs;
+    try {
+      dirs = await resolveDropDirs(req, res, job_id);
+    } catch (e) {
+      return res.status(e.status || 400).json({ detail: e.detail || e.message });
+    }
+    
+    const names = filenamesStr.split(",").map(n => n.trim()).filter(Boolean);
+    const result = recruitmentService.cvStatusInDirs(dirs.buffer_dir, dirs.archive_dir, names);
+    
+    res.json({ job_id, ...result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const uploadCandidateCv = async (req, res, next) => {
+  try {
+    const { candidate_id } = req.params;
+    const file = req.file;
+    if (!file) return res.status(400).json({ detail: "No file uploaded" });
+
+    if (!(await _requireCandidateAccess(req, res, candidate_id))) return;
+
+    const ext = path.extname(file.originalname || "").replace(/^\./, "").toLowerCase();
+    const allowed = new Set(["pdf", "doc", "docx", "txt", "rtf"]);
+    if (!allowed.has(ext)) {
+      return res.status(400).json({ detail: `CV must be one of: ${[...allowed].sort().join(", ")}` });
+    }
+    
+    const target = await recruitmentService.candidateCvTarget(candidate_id, ext);
+    if (!target) return res.status(404).json({ detail: "Candidate not found" });
+    
+    try {
+      fs.mkdirSync(target.abs_dir, { recursive: true });
+      
+      const old = target.old_abs_path;
+      if (old && old !== target.abs_path && fs.existsSync(old)) {
+        try { fs.unlinkSync(old); } catch (e) {}
+      }
+      
+      fs.writeFileSync(target.abs_path, file.buffer);
+    } catch (e) {
+      return res.status(500).json({ detail: `Failed to save CV: ${e.message}` });
+    }
+    
+    const fname = path.basename(target.abs_path);
+    const result = await recruitmentService.setCandidateCv(candidate_id, file.originalname || fname, target.rel_path);
+    if (result.status === "error") {
+      return res.status(400).json({ detail: result.message });
+    }
+    
+    res.json({ status: "success", cv_file_name: file.originalname || fname });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const downloadCandidateCv = async (req, res, next) => {
+  try {
+    const { candidate_id } = req.params;
+    const { inline } = req.query;
+
+    if (!(await _requireCandidateAccess(req, res, candidate_id))) return;
+
+    const row = await recruitmentService.getCandidateCvPath(candidate_id);
+    if (!row || !row[1]) return res.status(404).json({ detail: "No CV uploaded for this candidate" });
+    
+    const { DOCS_BASE } = await import('../services/documents.service.js');
+    const absPath = path.isAbsolute(row[1]) ? row[1] : path.join(DOCS_BASE, row[1]);
+    
+    if (!fs.existsSync(absPath)) return res.status(404).json({ detail: "CV file not found on disk" });
+    
+    const fname = row[0] || path.basename(absPath);
+    if (inline === 'true' || inline === true) {
+      res.setHeader("Content-Disposition", `inline; filename="${fname}"`);
+    } else {
+      res.setHeader("Content-Disposition", `attachment; filename="${fname}"`);
+    }
+    res.sendFile(absPath);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const applyCandidate = async (req, res, next) => {
+  try {
+    const { candidate_id } = req.params;
+    const { job_id, source } = res.locals.validated.body;
+
+    if (!(await _requireCandidateAccess(req, res, candidate_id))) return;
+
+    const result = await recruitmentService.createApplicationForCandidate(candidate_id, job_id, source);
+    if (result.status === "error") {
+      return res.status(400).json({ detail: result.message });
+    }
+    
+    const app_id = result.application_id;
+    
+    // Kick off evaluation in background (Promises don't block Express response)
+    recruitmentService.evaluateApplication(app_id, candidate_id, job_id).catch(err => {
+      console.error(`Background evaluation failed for app ${app_id}:`, err);
+    });
+    
+    res.json({
+      status: "success",
+      application_id: app_id,
+      created: result.created,
+      evaluating: true,
+      message: "Application created — AI is scoring the candidate for this job."
+    });
   } catch (err) {
     next(err);
   }

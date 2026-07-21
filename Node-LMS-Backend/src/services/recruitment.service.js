@@ -1,6 +1,10 @@
 import oracledb from "oracledb";
+import fs from 'fs';
+import path from 'path';
 import { getDirectConnection } from "../config/database.js";
 import { resolveFilterLists } from "./adminRights.service.js";
+import { safeName, DOCS_ROOT, DOCS_BASE } from './documents.service.js';
+import { evaluateCv } from './cvEvaluator.service.js';
 
 const rToInt = (v) => {
   const num = parseInt(v, 10);
@@ -1733,7 +1737,7 @@ export const listNotificationTemplates = async (eventType = null, notificationTy
 
 const _render = (text, ctx) => {
   if (!text) return text;
-  let out = text.replace(/\{\{([^}]+)\}\}/g, (_, key) => String(ctx[key] || ""));
+  let out = text.replace(/{{([^}]+)}}/g, (_, key) => String(ctx[key] || ""));
   out = out.replace(/[ \t]+\n/g, "\n");
   out = out.replace(/\n{3,}/g, "\n\n");
   return out.trim();
@@ -2057,4 +2061,861 @@ export const listNotificationSelections = async (appId) => {
   } finally {
     await connection?.close();
   }
+};
+
+
+// ==================================================================
+// AI EVALUATIONS & CV PIPELINE DB-BACKED PERSISTENCE
+// ==================================================================
+
+
+
+const _lob = (v) => {
+  if (v === null || v === undefined) return null;
+  return typeof v.getData === 'function' ? v.getData() : String(v); // Very rough stub, caller handles actual lob read via readLob
+};
+
+export const companyBranchParts = async (connection, compc, brnch) => {
+  const parts = [];
+  const cval = rToInt(compc);
+  const bval = rToInt(brnch);
+
+  if (cval !== null) {
+    let companyName = null;
+    try {
+      const result = await connection.execute("SELECT UNIT_NAME FROM UNIT_MST WHERE UNIT_ID = :u", { u: String(cval) }, { outFormat: 4002 });
+      if (result.rows?.[0]) companyName = result.rows[0].UNIT_NAME;
+    } catch (e) {
+      // pass
+    }
+    parts.push(safeName(companyName, `Comp${cval}`));
+
+    if (bval !== null) {
+      let branchName = null;
+      try {
+        const result = await connection.execute("SELECT DESCR FROM COM_LOCATION WHERE LCODE = :l", { l: String(bval) }, { outFormat: 4002 });
+        if (result.rows?.[0]) branchName = result.rows[0].DESCR;
+      } catch (e) {
+        // pass
+      }
+      parts.push(safeName(branchName, `branch${bval}`));
+    }
+  }
+  return parts;
+};
+
+export const getJobScope = async (jobId) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    try {
+      const result = await connection.execute(
+        "SELECT JOB_TITLE, JOB_DESC, SKILLS_REQ, COMPC, BRNCH FROM RECRUITMENT_JOBS WHERE JOB_ID = :jid",
+        { jid: jobId },
+        { outFormat: 4002 }
+      );
+      const row = result.rows?.[0];
+      if (!row) return null;
+      return {
+        job_id: rToInt(jobId),
+        job_title: await readLob(row.JOB_TITLE),
+        job_desc: await readLob(row.JOB_DESC),
+        skills_req: await readLob(row.SKILLS_REQ),
+        compc: rToInt(row.COMPC),
+        brnch: rToInt(row.BRNCH),
+      };
+    } catch (e) {
+      if (!e.message.includes("ORA-00904")) throw e;
+      const result = await connection.execute(
+        "SELECT JOB_TITLE, JOB_DESC, SKILLS_REQ FROM RECRUITMENT_JOBS WHERE JOB_ID = :jid",
+        { jid: jobId },
+        { outFormat: 4002 }
+      );
+      const row = result.rows?.[0];
+      if (!row) return null;
+      return {
+        job_id: rToInt(jobId),
+        job_title: await readLob(row.JOB_TITLE),
+        job_desc: await readLob(row.JOB_DESC),
+        skills_req: await readLob(row.SKILLS_REQ),
+        compc: null,
+        brnch: null,
+      };
+    }
+  } finally {
+    await connection?.close();
+  }
+};
+
+export const jobCvDirs = async (jobId) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const scope = await getJobScope(jobId);
+    if (!scope) return null;
+    const { compc, brnch } = scope;
+    const parts = await companyBranchParts(connection, compc, brnch);
+    const jobFolder = String(rToInt(jobId));
+    
+    return {
+      buffer_dir: path.join(DOCS_ROOT, ...parts, "RECRUITMENT_CVS", jobFolder),
+      archive_dir: path.join(DOCS_ROOT, ...parts, "CV_Archive", jobFolder),
+      job_folder: jobFolder,
+      compc,
+      brnch,
+    };
+  } finally {
+    await connection?.close();
+  }
+};
+
+export const poolCvDirs = async (compc, brnch) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const parts = await companyBranchParts(connection, compc, brnch);
+    
+    return {
+      buffer_dir: path.join(DOCS_ROOT, ...parts, "RECRUITMENT_CVS", "pool"),
+      archive_dir: path.join(DOCS_ROOT, ...parts, "CV_Archive", "pool"),
+      job_folder: "pool",
+      compc: rToInt(compc),
+      brnch: rToInt(brnch),
+    };
+  } finally {
+    await connection?.close();
+  }
+};
+
+export const cvStatusInDirs = (bufferDir, archiveDir, filenames) => {
+  const out = {};
+  for (const raw of (filenames || [])) {
+    const name = path.basename(String(raw));
+    const stem = path.parse(name).name;
+    const info = { state: "unknown", score: null };
+    
+    const err = path.join(archiveDir, stem + ".error.json");
+    const dberr = path.join(archiveDir, stem + ".dberror.json");
+    const ev = path.join(archiveDir, stem + ".json");
+    
+    if (fs.existsSync(err)) {
+      info.state = "unreadable";
+    } else if (fs.existsSync(ev)) {
+      let data = {};
+      try {
+        data = JSON.parse(fs.readFileSync(ev, "utf-8"));
+      } catch (e) {
+        // pass
+      }
+      const evaluation = data.evaluation;
+      if (evaluation) {
+        info.state = "scored";
+        info.score = evaluation.overall_score;
+      } else {
+        info.state = "profiled";
+      }
+      if (fs.existsSync(dberr)) {
+        info.state = "failed";
+      }
+    } else if (fs.existsSync(path.join(bufferDir, name))) {
+      info.state = "processing";
+    }
+    out[name] = info;
+  }
+  return { files: out };
+};
+
+export const candidateCvTarget = async (candidateId, ext) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    let row = null;
+    try {
+      const result = await connection.execute(
+        "SELECT COMPC, BRNCH, CV_FILE_PATH FROM RECRUITMENT_CANDIDATES WHERE CANDIDATE_ID = :cid",
+        { cid: candidateId },
+        { outFormat: 4002 }
+      );
+      row = result.rows?.[0];
+    } catch (e) {
+      if (!e.message.includes("ORA-00904")) throw e;
+      const result = await connection.execute(
+        "SELECT NULL AS COMPC, NULL AS BRNCH, CV_FILE_PATH FROM RECRUITMENT_CANDIDATES WHERE CANDIDATE_ID = :cid",
+        { cid: candidateId },
+        { outFormat: 4002 }
+      );
+      row = result.rows?.[0];
+    }
+    
+    if (!row) return null;
+    
+    const compc = rToInt(row.COMPC);
+    const brnch = rToInt(row.BRNCH);
+    const oldRel = (row.CV_FILE_PATH || "").trim();
+    
+    const parts = ["EMP_DOCS"];
+    if (compc !== null) {
+      const branchParts = await companyBranchParts(connection, compc, brnch);
+      parts.push(...branchParts);
+    }
+    parts.push("RECRUITMENT_CVS");
+    
+    const cleanExt = (ext || "bin").replace(/^\.+/, "").toLowerCase();
+    const fname = `cand_${candidateId}.${cleanExt}`;
+    const relDir = path.join(...parts);
+    const relPath = path.join(relDir, fname);
+    const absDir = path.join(DOCS_BASE, relDir);
+    let oldAbs = null;
+    if (oldRel) {
+      oldAbs = path.isAbsolute(oldRel) ? oldRel : path.join(DOCS_BASE, oldRel);
+    }
+    
+    return {
+      abs_dir: absDir,
+      abs_path: path.join(DOCS_BASE, relPath),
+      rel_path: relPath,
+      old_abs_path: oldAbs,
+    };
+  } finally {
+    await connection?.close();
+  }
+};
+
+export const setCandidateCv = async (candidateId, fileName, relPath) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const result = await connection.execute(
+      `
+      UPDATE RECRUITMENT_CANDIDATES
+      SET CV_FILE_NAME = :fn, CV_FILE_PATH = :fp, UPDATED_AT = SYSDATE
+      WHERE CANDIDATE_ID = :cid
+      `,
+      {
+        fn: (fileName || "").substring(0, 255) || null,
+        fp: (relPath || "").substring(0, 1000) || null,
+        cid: candidateId,
+      },
+      { autoCommit: true }
+    );
+    if (result.rowsAffected === 0) {
+      return { status: "error", message: "Candidate not found" };
+    }
+    return { status: "success" };
+  } catch (err) {
+    return { status: "error", message: err.message };
+  } finally {
+    await connection?.close();
+  }
+};
+
+export const getCandidateCvPath = async (candidateId) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const result = await connection.execute(
+      "SELECT CV_FILE_NAME, CV_FILE_PATH FROM RECRUITMENT_CANDIDATES WHERE CANDIDATE_ID = :cid",
+      { cid: candidateId },
+      { outFormat: 4002 }
+    );
+    const row = result.rows?.[0];
+    if (!row) return null;
+    return [row.CV_FILE_NAME, row.CV_FILE_PATH];
+  } finally {
+    await connection?.close();
+  }
+};
+
+export const createApplicationForCandidate = async (candidateId, jobId, source = null) => {
+  // Port of create_application_for_candidate + _find_or_create_application_tx:
+  // REUSE the candidate's existing application for this job if one exists (so a
+  // re-apply / deep-match re-score lands on the SAME application), else INSERT a
+  // new PENDING one. Returns { status, application_id, created }.
+  let connection;
+  try {
+    connection = await getDirectConnection();
+
+    const candResult = await connection.execute(
+      `SELECT CANDIDATE_NAME, MOBILE, EMAIL FROM RECRUITMENT_CANDIDATES WHERE CANDIDATE_ID = :cid`,
+      { cid: candidateId },
+      { outFormat: 4002 }
+    );
+    const cand = candResult.rows?.[0];
+    if (!cand) return { status: "error", message: "Candidate not found" };
+
+    const existing = await connection.execute(
+      `SELECT APP_ID FROM RECRUITMENT_APPLICATIONS
+       WHERE CANDIDATE_ID = :cid AND JOB_ID = :jid
+       ORDER BY APP_ID DESC FETCH FIRST 1 ROWS ONLY`,
+      { cid: candidateId, jid: jobId },
+      { outFormat: 4002 }
+    );
+    if (existing.rows?.[0]) {
+      return { status: "success", application_id: rToInt(existing.rows[0].APP_ID), created: false };
+    }
+
+    const result = await connection.execute(
+      `INSERT INTO RECRUITMENT_APPLICATIONS (
+          APP_ID, JOB_ID, CANDIDATE_ID, CANDIDATE_NAME, MOBILE, EMAIL,
+          SOURCE, APP_DATE, STATUS, CREATED_AT
+       ) VALUES (
+          RECRUITMENT_APPS_SEQ.NEXTVAL, :jid, :cid, :name, :mobile, :email,
+          :source, SYSDATE, 'PENDING', SYSDATE
+       ) RETURNING APP_ID INTO :out_id`,
+      {
+        jid: jobId,
+        cid: candidateId,
+        name: String(cand.CANDIDATE_NAME || "Unknown").substring(0, 200),
+        mobile: cand.MOBILE || null,
+        email: cand.EMAIL || null,
+        source: source || "Talent Match",
+        out_id: { type: oracledb.NUMBER, dir: oracledb.BIND_OUT },
+      },
+      { autoCommit: true }
+    );
+    return { status: "success", application_id: rToInt(result.outBinds.out_id[0]), created: true };
+  } catch (err) {
+    return { status: "error", message: err.message };
+  } finally {
+    await connection?.close();
+  }
+};
+
+export const getCandidateCvText = async (candidateId) => {
+  const cand = await getCandidate(candidateId);
+  if (!cand) return null;
+  
+  const parts = [`Name: ${cand.candidate_name || ""}`];
+  if (cand.preferred_job_title) parts.push(`Preferred Job Title: ${cand.preferred_job_title}`);
+  if (cand.location) parts.push(`Location: ${cand.location}`);
+  if (cand.profile_summary) parts.push(`\nSummary:\n${cand.profile_summary}`);
+  if (cand.skills && cand.skills.length) parts.push(`\nSkills: ${cand.skills.join(", ")}`);
+
+  if (cand.experience && cand.experience.length) {
+    parts.push("\nExperience:");
+    for (const x of cand.experience) {
+      let line = `- ${x.role || ""} at ${x.company || ""} (${x.duration || ""})`;
+      if (x.description) line += `: ${x.description}`;
+      parts.push(line);
+    }
+  }
+  
+  if (cand.education && cand.education.length) {
+    parts.push("\nEducation:");
+    for (const e of cand.education) {
+      parts.push(`- ${e.degree || ""}, ${e.institution || ""} (${e.graduation_year || ""})`);
+    }
+  }
+  
+  return {
+    text: parts.join("\n"),
+    detected_job_title: cand.preferred_job_title,
+    name: cand.candidate_name,
+    mobile: cand.mobile,
+    email: cand.email,
+  };
+};
+
+export const buildJobJdText = async (jobId) => {
+  const job = await getJob(rToInt(jobId));
+  if (!job) return null;
+  
+  const lines = [];
+  if (job.job_title) lines.push(`Job Title: ${job.job_title}`);
+  
+  const meta = [job.employment_type, job.work_mode].filter(Boolean).join(" | ");
+  if (meta) lines.push(meta);
+  
+  if (job.job_desc) lines.push(`\nDescription:\n${job.job_desc}`);
+  if (job.skills_req) lines.push(`\nMust-have skills: ${job.skills_req}`);
+  if (job.nice_to_have_skills) lines.push(`Nice-to-have skills: ${job.nice_to_have_skills}`);
+  if (job.min_experience_years !== null && job.min_experience_years !== undefined) lines.push(`Minimum experience: ${job.min_experience_years} years`);
+  if (job.education_req) lines.push(`Education requirement: ${job.education_req}`);
+
+  const text = lines.join("\n").trim();
+  return text || null;
+};
+
+export const storeEvaluation = async (appId, evaluation, stats, totalSeconds = null) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    
+    const params = {
+      app_id: appId,
+      compat: rToInt(evaluation?.compatibility),
+      tech: rToInt(evaluation?.technical_match),
+      exp: rToInt(evaluation?.experience_match),
+      overall: rToInt(evaluation?.overall_score),
+      reco: evaluation?.recommendation || null,
+      summary: evaluation?.summary || null,
+      model: (stats?.model || "").substring(0, 100) || null,
+      ptok: rToInt(stats?.prompt_tokens),
+      otok: rToInt(stats?.output_tokens),
+      ttok: rToInt(stats?.total_tokens),
+      tsec: totalSeconds !== null ? parseFloat(totalSeconds) : null,
+      lsec: stats?.llm_seconds !== null && stats?.llm_seconds !== undefined ? parseFloat(stats.llm_seconds) : null,
+    };
+    
+    const result = await connection.execute(
+      `
+      INSERT INTO RECRUITMENT_AI_EVALUATIONS (
+          EVALUATION_ID, APPLICATION_ID, COMPATIBILITY, TECHNICAL_MATCH,
+          EXPERIENCE_MATCH, OVERALL_SCORE, RECOMMENDATION, SUMMARY, MODEL_NAME,
+          PROMPT_TOKENS, OUTPUT_TOKENS, TOTAL_TOKENS, TOTAL_SECONDS, LLM_SECONDS,
+          PROCESSED_AT
+      ) VALUES (
+          RECRUITMENT_AI_EVAL_SEQ.NEXTVAL, :app_id, :compat, :tech, :exp, :overall,
+          :reco, :summary, :model, :ptok, :otok, :ttok, :tsec, :lsec,
+          SYSDATE
+      ) RETURNING EVALUATION_ID INTO :out_id
+      `,
+      { ...params, out_id: { type: oracledb.NUMBER, dir: oracledb.BIND_OUT } },
+      { autoCommit: false }
+    );
+    const evaluationId = result.outBinds.out_id[0];
+    
+    const strengths = evaluation?.strengths || [];
+    for (const s of strengths) {
+      const text = String(s || "").trim();
+      if (!text) continue;
+      await connection.execute(
+        `INSERT INTO RECRUITMENT_AI_STRENGTHS (STRENGTH_ID, EVALUATION_ID, STRENGTH)
+         VALUES (RECRUITMENT_AI_STRENGTH_SEQ.NEXTVAL, :eid, :t)`,
+        { eid: evaluationId, t: text }
+      );
+    }
+    
+    const weaknesses = evaluation?.weaknesses || [];
+    for (const w of weaknesses) {
+      const text = String(w || "").trim();
+      if (!text) continue;
+      await connection.execute(
+        `INSERT INTO RECRUITMENT_AI_WEAKNESSES (WEAKNESS_ID, EVALUATION_ID, WEAKNESS)
+         VALUES (RECRUITMENT_AI_WEAKNESS_SEQ.NEXTVAL, :eid, :t)`,
+        { eid: evaluationId, t: text }
+      );
+    }
+    
+    await connection.commit();
+    return { status: "success", evaluation_id: evaluationId };
+  } catch (err) {
+    await connection?.rollback();
+    return { status: "error", message: err.message };
+  } finally {
+    await connection?.close();
+  }
+};
+
+export const getApplicationEvaluation = async (appId) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const result = await connection.execute(
+      `
+      SELECT EVALUATION_ID, APPLICATION_ID, COMPATIBILITY, TECHNICAL_MATCH,
+             EXPERIENCE_MATCH, OVERALL_SCORE, RECOMMENDATION, SUMMARY,
+             MODEL_NAME, PROMPT_TOKENS, OUTPUT_TOKENS, TOTAL_TOKENS,
+             TOTAL_SECONDS, LLM_SECONDS,
+             TO_CHAR(PROCESSED_AT, 'YYYY-MM-DD HH24:MI:SS') AS PROCESSED_AT
+      FROM RECRUITMENT_AI_EVALUATIONS
+      WHERE APPLICATION_ID = :app_id
+      ORDER BY EVALUATION_ID DESC FETCH FIRST 1 ROWS ONLY
+      `,
+      { app_id: appId },
+      { outFormat: 4002 }
+    );
+    
+    const row = result.rows?.[0];
+    if (!row) return null;
+    
+    const ev = Object.fromEntries(
+      Object.entries(row).map(([k, v]) => [k.toLowerCase(), v])
+    );
+    ev.recommendation = await readLob(ev.recommendation);
+    ev.summary = await readLob(ev.summary);
+    
+    const eid = ev.evaluation_id;
+    
+    const sResult = await connection.execute(
+      "SELECT STRENGTH FROM RECRUITMENT_AI_STRENGTHS WHERE EVALUATION_ID = :eid ORDER BY STRENGTH_ID",
+      { eid },
+      { outFormat: 4002 }
+    );
+    ev.strengths = [];
+    for (const r of sResult.rows || []) {
+      const s = await readLob(r.STRENGTH);
+      if (s) ev.strengths.push(s);
+    }
+    
+    const wResult = await connection.execute(
+      "SELECT WEAKNESS FROM RECRUITMENT_AI_WEAKNESSES WHERE EVALUATION_ID = :eid ORDER BY WEAKNESS_ID",
+      { eid },
+      { outFormat: 4002 }
+    );
+    ev.weaknesses = [];
+    for (const r of wResult.rows || []) {
+      const w = await readLob(r.WEAKNESS);
+      if (w) ev.weaknesses.push(w);
+    }
+    
+    return ev;
+  } finally {
+    await connection?.close();
+  }
+};
+
+const _tokenize = (text) => {
+  if (!text) return new Set();
+  const MATCH_STOPWORDS = new Set(["and", "or", "the", "a", "an", "to", "of", "in", "for", "with", "on", "at", "is", "are", "be", "as", "we", "you", "our", "your", "will", "have", "has", "who", "this", "that", "job", "role", "work", "team", "years", "year", "experience", "skills", "required", "requirements", "responsibilities", "looking", "candidate", "candidates", "ability", "strong", "good"]);
+  const toks = String(text).toLowerCase().match(/[a-z0-9+#.]{2,}/g) || [];
+  return new Set(toks.filter(t => !MATCH_STOPWORDS.has(t)));
+};
+
+export const matchCandidatesForJob = async (jobId, top = 20, compc = null, brnch = null) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    
+    const jobScope = await getJobScope(jobId);
+    if (!jobScope) return { status: "error", message: `Job ${jobId} not found` };
+    const { job_title, job_desc, skills_req } = jobScope;
+    
+    const jdTokens = _tokenize([job_desc, skills_req].filter(Boolean).join(" "));
+    const reqSkillTokens = _tokenize(skills_req).size > 0 ? _tokenize(skills_req) : jdTokens;
+    const titleTokens = _tokenize(job_title);
+    
+    // Minimal fallback implementation of candidate listing for matching
+    // Ported from match_candidates_for_job in recruitment_repository.py
+    const params = {};
+    const scopeParts = [];
+    const cnums = (Array.isArray(compc) ? compc : [compc]).map(rToInt).filter((n) => n !== null);
+    const bnums = (Array.isArray(brnch) ? brnch : [brnch]).map(rToInt).filter((n) => n !== null);
+  
+    if (cnums.length > 0) {
+      const ph = cnums.map((_, i) => `:jc${i}`).join(", ");
+      scopeParts.push(`c.COMPC IN (${ph})`);
+      cnums.forEach((n, i) => { params[`jc${i}`] = n; });
+    }
+    if (bnums.length > 0) {
+      const ph = bnums.map((_, i) => `:jb${i}`).join(", ");
+      scopeParts.push(`(c.BRNCH IN (${ph}) OR c.BRNCH IS NULL)`);
+      bnums.forEach((n, i) => { params[`jb${i}`] = n; });
+    }
+    
+    const scopeSql = scopeParts.length > 0 ? " WHERE " + scopeParts.join(" AND ") : "";
+    
+    let rows = [];
+    try {
+      const result = await connection.execute(`
+        SELECT c.CANDIDATE_ID, c.CANDIDATE_NAME, c.PREFERRED_JOB_TITLE,
+               c.LOCATION, c.EMAIL, c.MOBILE,
+               (SELECT LISTAGG(s.SKILL_NAME, '||') WITHIN GROUP (ORDER BY s.SKILL_ID)
+                FROM RECRUITMENT_CANDIDATE_SKILLS s
+                WHERE s.CANDIDATE_ID = c.CANDIDATE_ID) AS SKILLS,
+               (SELECT LISTAGG(x.ROLE || ' ' || NVL(x.COMPANY,' '), ' ')
+                       WITHIN GROUP (ORDER BY x.EXPERIENCE_ID)
+                FROM RECRUITMENT_CANDIDATE_EXPERIENCE x
+                WHERE x.CANDIDATE_ID = c.CANDIDATE_ID) AS EXP_TEXT
+        FROM RECRUITMENT_CANDIDATES c
+        ${scopeSql}
+      `, params, { outFormat: 4002 });
+      rows = result.rows || [];
+    } catch (e) {
+      if (!e.message.includes("ORA-00904") || !scopeSql) throw e;
+      const result = await connection.execute(`
+        SELECT c.CANDIDATE_ID, c.CANDIDATE_NAME, c.PREFERRED_JOB_TITLE,
+               c.LOCATION, c.EMAIL, c.MOBILE,
+               (SELECT LISTAGG(s.SKILL_NAME, '||') WITHIN GROUP (ORDER BY s.SKILL_ID)
+                FROM RECRUITMENT_CANDIDATE_SKILLS s
+                WHERE s.CANDIDATE_ID = c.CANDIDATE_ID) AS SKILLS,
+               (SELECT LISTAGG(x.ROLE || ' ' || NVL(x.COMPANY,' '), ' ')
+                       WITHIN GROUP (ORDER BY x.EXPERIENCE_ID)
+                FROM RECRUITMENT_CANDIDATE_EXPERIENCE x
+                WHERE x.CANDIDATE_ID = c.CANDIDATE_ID) AS EXP_TEXT
+        FROM RECRUITMENT_CANDIDATES c
+      `, {}, { outFormat: 4002 });
+      rows = result.rows || [];
+    }
+    
+    const ranked = [];
+    for (const r of rows) {
+      const skillsRaw = await readLob(r.SKILLS) || "";
+      const skills = skillsRaw.split("||").filter(Boolean);
+      let skillTokens = new Set();
+      for (const s of skills) {
+        for (const t of _tokenize(s)) skillTokens.add(t);
+      }
+      
+      const intersectionSkills = skills.filter(s => {
+        const sToks = _tokenize(s);
+        for (const t of sToks) if (reqSkillTokens.has(t)) return true;
+        return false;
+      });
+      const matchedSkills = [...new Set(intersectionSkills)].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+      
+      const prefStr = await readLob(r.PREFERRED_JOB_TITLE) || "";
+      const prefTokens = _tokenize(prefStr);
+      const expStr = await readLob(r.EXP_TEXT) || "";
+      const expTokens = _tokenize(expStr);
+      
+      let skillMatches = 0;
+      for (const t of skillTokens) if (reqSkillTokens.has(t)) skillMatches++;
+      
+      let titleMatches = 0;
+      for (const t of prefTokens) if (titleTokens.has(t)) titleMatches++;
+      
+      let expMatches = 0;
+      for (const t of expTokens) if (jdTokens.has(t)) expMatches++;
+      
+      const skillScore = 10 * skillMatches;
+      const titleScore = 6 * titleMatches;
+      const expScore = 1 * expMatches;
+      const score = skillScore + titleScore + expScore;
+      
+      if (score <= 0) continue;
+      
+      ranked.push({
+        candidate_id: rToInt(r.CANDIDATE_ID),
+        candidate_name: await readLob(r.CANDIDATE_NAME),
+        preferred_job_title: prefStr,
+        location: await readLob(r.LOCATION),
+        email: await readLob(r.EMAIL),
+        mobile: await readLob(r.MOBILE),
+        score,
+        matched_skills: matchedSkills,
+        skill_matches: skillMatches,
+      });
+    }
+    
+    ranked.sort((a, b) => b.score - a.score || a.candidate_id - b.candidate_id);
+    const topN = ranked.slice(0, Math.max(rToInt(top), 0));
+    
+    if (topN.length > 0) {
+      const ids = topN.map(c => c.candidate_id);
+      const ph = ids.map((_, i) => `:a${i}`).join(", ");
+      const ap = {};
+      ids.forEach((id, i) => { ap[`a${i}`] = id; });
+      ap.jid = rToInt(jobId);
+      
+      const exResult = await connection.execute(`
+        SELECT a.CANDIDATE_ID, a.APP_ID,
+               (SELECT MAX(e.OVERALL_SCORE) FROM RECRUITMENT_AI_EVALUATIONS e
+                WHERE e.APPLICATION_ID = a.APP_ID) AS AI_SCORE
+        FROM RECRUITMENT_APPLICATIONS a
+        WHERE a.JOB_ID = :jid AND a.CANDIDATE_ID IN (${ph})
+      `, ap, { outFormat: 4002 });
+      
+      const existing = {};
+      for (const r of exResult.rows || []) {
+        existing[rToInt(r.CANDIDATE_ID)] = {
+          app_id: rToInt(r.APP_ID),
+          ai_overall_score: rToInt(r.AI_SCORE)
+        };
+      }
+      
+      for (const c of topN) {
+        const info = existing[c.candidate_id];
+        c.existing_application_id = info ? info.app_id : null;
+        c.ai_overall_score = info ? info.ai_overall_score : null;
+      }
+    }
+    
+    return {
+      status: "success",
+      job_id: rToInt(jobId),
+      job_title,
+      pool_size: rows.length,
+      matched: ranked.length,
+      returned: topN.length,
+      candidates: topN,
+    };
+  } finally {
+    await connection?.close();
+  }
+};
+
+const _scoreBand = (score) => {
+  const s = rToInt(score);
+  if (s === null) return null;
+  if (s >= 75) return "strong";
+  if (s >= 40) return "review";
+  return "weak";
+};
+
+export const rankJobApplicants = async (jobId, topK = 10, compc = null, brnch = null) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const jobScope = await getJobScope(jobId);
+    if (!jobScope) return { status: "error", message: `Job ${jobId} not found` };
+    const job_title = jobScope.job_title;
+    
+    const params = { jid: rToInt(jobId) };
+    const scopeSql = _jobScopeFilter(params, compc, brnch);
+    
+    const runRankQuery = async (scope, p) => {
+      const sql = `
+        SELECT a.APP_ID, a.CANDIDATE_ID, a.CANDIDATE_NAME, a.EMAIL, a.MOBILE,
+               a.STATUS, TO_CHAR(a.APP_DATE, 'YYYY-MM-DD') AS APP_DATE,
+               a.SOURCE,
+               c.PREFERRED_JOB_TITLE, c.CV_FILE_NAME, c.LOCATION,
+               e.EVALUATION_ID, e.OVERALL_SCORE, e.COMPATIBILITY,
+               e.TECHNICAL_MATCH, e.EXPERIENCE_MATCH, e.RECOMMENDATION,
+               e.SUMMARY, e.MODEL_NAME,
+               TO_CHAR(e.PROCESSED_AT, 'YYYY-MM-DD HH24:MI:SS') AS PROCESSED_AT
+        FROM RECRUITMENT_APPLICATIONS a
+        JOIN RECRUITMENT_JOBS j ON j.JOB_ID = a.JOB_ID
+        LEFT JOIN RECRUITMENT_CANDIDATES c ON c.CANDIDATE_ID = a.CANDIDATE_ID
+        LEFT JOIN RECRUITMENT_AI_EVALUATIONS e ON e.EVALUATION_ID = (
+            SELECT MAX(e2.EVALUATION_ID) FROM RECRUITMENT_AI_EVALUATIONS e2
+            WHERE e2.APPLICATION_ID = a.APP_ID
+        )
+        WHERE a.JOB_ID = :jid ${scope}
+        ORDER BY e.OVERALL_SCORE DESC NULLS LAST, a.APP_ID DESC
+      `;
+      const res = await connection.execute(sql, p, { outFormat: 4002 });
+      return res.rows || [];
+    };
+    
+    let rows = [];
+    try {
+      rows = await runRankQuery(scopeSql, params);
+    } catch (e) {
+      if (!e.message.includes("ORA-00904") || !scopeSql) throw e;
+      rows = await runRankQuery("", { jid: rToInt(jobId) });
+    }
+    
+    const applicants = [];
+    const counts = { total: 0, evaluated: 0, pending: 0, flagged: 0, shortlisted: 0, rejected: 0 };
+    
+    for (const r of rows) {
+      const score = rToInt(r.OVERALL_SCORE);
+      const band = _scoreBand(score);
+      const status = (await readLob(r.STATUS) || "PENDING").toUpperCase();
+      
+      counts.total++;
+      if (score !== null) counts.evaluated++;
+      else counts.pending++;
+      
+      if (band === "review") counts.flagged++;
+      if (status === "SHORTLISTED") counts.shortlisted++;
+      else if (status === "REJECTED") counts.rejected++;
+      
+      applicants.push({
+        app_id: rToInt(r.APP_ID),
+        candidate_id: rToInt(r.CANDIDATE_ID),
+        candidate_name: await readLob(r.CANDIDATE_NAME),
+        email: await readLob(r.EMAIL),
+        mobile: await readLob(r.MOBILE),
+        location: await readLob(r.LOCATION),
+        preferred_job_title: await readLob(r.PREFERRED_JOB_TITLE),
+        cv_file_name: await readLob(r.CV_FILE_NAME),
+        status,
+        source: await readLob(r.SOURCE),
+        app_date: r.APP_DATE,
+        evaluation_id: rToInt(r.EVALUATION_ID),
+        overall_score: score,
+        compatibility: rToInt(r.COMPATIBILITY),
+        technical_match: rToInt(r.TECHNICAL_MATCH),
+        experience_match: rToInt(r.EXPERIENCE_MATCH),
+        recommendation: await readLob(r.RECOMMENDATION),
+        ai_note: await readLob(r.SUMMARY),
+        model_name: await readLob(r.MODEL_NAME),
+        processed_at: r.PROCESSED_AT,
+        score_band: band,
+        ai_flagged: band === "review"
+      });
+    }
+    
+    const k = Math.max(rToInt(topK), 0);
+    return {
+      status: "success",
+      job_id: rToInt(jobId),
+      job_title: job_title,
+      top_k: k,
+      counts,
+      candidates: k ? applicants.slice(0, k) : applicants,
+    };
+  } finally {
+    await connection?.close();
+  }
+};
+
+export const evaluateApplication = async (appId, candidateId, jobId) => {
+  try {
+    const cv = await getCandidateCvText(candidateId);
+    if (!cv || !cv.text || !cv.text.trim()) {
+      return { status: "error", message: "No stored profile text to evaluate" };
+    }
+    const jd = await buildJobJdText(jobId) || "";
+    
+    const start = process.uptime();
+    const { assessment, stats } = await evaluateCv(cv.text, jd, cv.detected_job_title);
+    const total = Number((process.uptime() - start).toFixed(3));
+    
+    const result = await storeEvaluation(appId, assessment.evaluation || {}, stats, total);
+    return result;
+  } catch (err) {
+    console.error("Apply-eval failed:", err.message);
+    return { status: "error", message: err.message };
+  }
+};
+
+export const matchCandidatesDeep = async (jobId, top = 20, compc = null, brnch = null) => {
+  const result = await matchCandidatesForJob(jobId, top, compc, brnch);
+  if (result.status !== "success" || !result.candidates || result.candidates.length === 0) {
+    result.deep = false;
+    return result;
+  }
+  
+  const jd = await buildJobJdText(jobId) || "";
+  const maxWorkers = parseInt(process.env.CV_MAX_WORKERS || "8", 10);
+  
+  const processCandidate = async (entry) => {
+    const cid = entry.candidate_id;
+    const cv = await getCandidateCvText(cid);
+    if (!cv || !cv.text || !cv.text.trim()) {
+      entry.deep_error = "No stored profile text to evaluate";
+      return;
+    }
+    const start = process.uptime();
+    try {
+      const { assessment, stats } = await evaluateCv(cv.text, jd, cv.detected_job_title);
+      const totalSeconds = Number((process.uptime() - start).toFixed(3));
+      const evaluation = assessment.evaluation || {};
+      
+      const app = await createApplicationForCandidate(cid, jobId, "Talent Match (deep)");
+      if (app.status !== "success") {
+        entry.deep_error = app.message;
+        return;
+      }
+      const appId = app.application_id;
+      await storeEvaluation(appId, evaluation, stats, totalSeconds);
+      
+      entry.existing_application_id = appId;
+      entry.ai_overall_score = evaluation.overall_score;
+      entry.ai_recommendation = evaluation.recommendation;
+    } catch (err) {
+      console.error(`Deep eval failed for candidate ${cid}:`, err.message);
+      entry.deep_error = err.message;
+    }
+  };
+  
+  // Basic concurrent execution mimicking ThreadPoolExecutor
+  for (let i = 0; i < result.candidates.length; i += maxWorkers) {
+    const chunk = result.candidates.slice(i, i + maxWorkers);
+    await Promise.all(chunk.map(processCandidate));
+  }
+  
+  result.candidates.sort((c1, c2) => {
+    const s1 = c1.ai_overall_score || -1;
+    const s2 = c2.ai_overall_score || -1;
+    if (s1 !== s2) return s2 - s1;
+    if (c1.score !== c2.score) return c2.score - c1.score;
+    return c1.candidate_id - c2.candidate_id;
+  });
+  
+  result.deep = true;
+  return result;
 };
