@@ -322,8 +322,12 @@ export const deactivatePanelMember = async (req, res, next) => {
 export const panelOptionsForApp = async (req, res, next) => {
   try {
     const { app_id } = req.params;
-    const items = await recruitmentService.panelOptionsForApp(app_id);
-    res.json({ items: recruitmentService.lowerKeys(items) });
+    const result = await recruitmentService.panelOptionsForApp(app_id);
+    if (result.status === "error") {
+      return res.status(404).json({ detail: result.message });
+    }
+    result.items = recruitmentService.lowerKeys(result.items);
+    res.json(result);
   } catch (err) {
     next(err);
   }

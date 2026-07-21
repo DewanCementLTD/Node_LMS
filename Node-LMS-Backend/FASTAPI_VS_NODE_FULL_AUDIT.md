@@ -124,11 +124,11 @@ Corrections to the prior `route_gap_analysis.md`:
 
 All mutating endpoints here key off the currently **open period** managed by `/payroll/periods/{period}/status` — porting payroll-entry before payroll's period-locking logic risks writes against periods that should be closed.
 
-### 4.3 Recruitment (`/recruitment/*`) — 36 endpoints
+### 4.3 Recruitment (`/recruitment/*`) — 37 endpoints
 
 Full applicant-tracking system: jobs, AI-based candidate matching/scoring, applications, interviews (with 409 double-booking conflict detection), interview panel pool, notification templates/selections, offers, CV bulk upload (feeds an **external AI screening pipeline** watching a filesystem drop folder), candidate talent pool, and recruitment analytics.
 
-✅ **29/36 endpoints (Standard ATS CRUD) have been successfully ported to Node.js** (`recruitment.routes.js`, `recruitment.controller.js`, `recruitment.service.js`):
+✅ **29/37 endpoints (Standard ATS CRUD) have been successfully ported to Node.js** (`recruitment.routes.js`, `recruitment.controller.js`, `recruitment.service.js`):
 - **Jobs:** list, create, get, update
 - **Applications:** list, create, get, patch status
 - **Interviews:** list, create, patch
@@ -138,18 +138,25 @@ Full applicant-tracking system: jobs, AI-based candidate matching/scoring, appli
 - **Analytics:** get analytics
 - **Candidates (Talent Pool):** list, create, get, update
 
-❌ **7/36 endpoints (AI Pipeline & CV Uploads) are pending:**
+❌ **8/37 endpoints (AI Pipeline & CV Uploads) are pending:**
 These remaining endpoints require interacting with the filesystem and the standalone Python LLM pipeline (`LMS-Backend/AI/` directory). Porting these requires architectural decisions on whether to port the Gemini LLM logic natively to Node.js or spawn/integrate with the existing Python watchdog daemon.
 
-| Method | Path | Why it's pending / Needs to be made |
-|---|---|---|
-| POST | `/recruitment/candidates/upload-cvs` | Drops PDFs into `EMP_DOCS/.../RECRUITMENT_CVS/`, watched asynchronously by an out-of-band python daemon. Requires `multer` setup for Node.js multipart form-data. |
-| GET | `/recruitment/candidates/cv-status` | Reads file statuses from the buffer and archive directories. |
-| POST | `/recruitment/candidates/{candidate_id}/cv` | Single CV upload. Requires `multer` in Node.js. |
-| GET | `/recruitment/candidates/{candidate_id}/cv` | Download CV endpoint. Requires `res.download` implementation with accurate absolute path resolution. |
-| POST | `/recruitment/candidates/{candidate_id}/apply` | Kicks off AI evaluation via background task. Express has no direct equivalent to FastAPI `BackgroundTasks`, so it requires an async `Promise.resolve().then(...)` or dedicated worker queue. |
-| POST | `/recruitment/jobs/{job_id}/match` | Triggers the LLM-backed candidate matcher in Python which mutates candidates arrays in-place using threading. |
-| GET | `/recruitment/jobs/{job_id}/top-candidates` | Fetches the AI shortlist evaluations for a job. |
+| Method | Path | What it does | How it works | Why it's difficult to port to Node.js |
+|---|---|---|---|---|
+| POST | `/recruitment/candidates/upload-cvs` | Bulk uploads up to 20 PDFs to a drop folder. | Resolves the target directory under `EMP_DOCS`, streams file bytes to `RECRUITMENT_CVS/`, and writes a `_scope.json` sidecar. Watched asynchronously by a Python daemon. | Requires configuring `multer` for multipart form-data parsing (bypassing Express JSON). Must safely handle asynchronous concurrent file I/O and mimic exact Python sidecar naming conventions. |
+| GET | `/recruitment/candidates/cv-status` | Polling endpoint for the UI to track CV processing state. | Scans the local filesystem's `RECRUITMENT_CVS` drop zone and `CV_Archive` directories to check the physical existence and JSON states of processed CVs. | Requires reimplementing filesystem directory scanning/polling logic in Node.js that perfectly matches the Python watchdog's output schema and file movement lifecycle. |
+| POST | `/recruitment/candidates/{candidate_id}/cv` | Single CV replacement for an existing candidate. | Uploads and overwrites the CV in the candidate's profile directory (handling extension mismatches). | Requires `multer` and careful filesystem manipulation to safely delete old files and write new ones without risking path-traversal vulnerabilities. |
+| GET | `/recruitment/candidates/{candidate_id}/cv` | Serves the candidate's CV PDF. | Resolves the absolute path against `DOCS_ROOT` and returns a `FileResponse` (inline or attachment). | Express requires safely piping file streams via `res.download` or `res.sendFile`, managing Content-Disposition headers and MIME types correctly. |
+| POST | `/recruitment/candidates/{candidate_id}/apply` | Applies a candidate and triggers background AI scoring. | Uses FastAPI's native `BackgroundTasks` to immediately return 200 OK to the client while kicking off a heavy `svc_evaluate_application` LLM call in a separate thread. | **Architectural mismatch:** Express has no native `BackgroundTasks`. Requires either risky "fire-and-forget" promises (`Promise.resolve().then(...)` - lost on crash) or implementing a dedicated worker queue system (like BullMQ/Redis) for reliability. |
+| POST | `/recruitment/jobs/{job_id}/match` | Ranks all talent-pool candidates against a job description. | Uses a Python `ThreadPoolExecutor` to concurrently batch-process a shortlist through the Gemini LLM API, mutating the candidate array in-place with scores. | Porting this means completely translating a complex Python AI orchestration script to Node.js, requiring careful `Promise.all` concurrency control, rate-limiting, and deep `@google/genai` SDK integration. |
+| GET | `/recruitment/jobs/{job_id}/top-candidates` | Fetches the final AI shortlist and evaluation JSONs. | Queries the DB for applications and parses the stored LLM assessment JSON blobs. | Tightly coupled to the exact JSON output schemas produced by the Python AI pipeline; any variance in Node.js LLM output would break the UI. |
+| GET | `/recruitment/applications/{app_id}/evaluation` | Fetches the detailed AI evaluation for a single application. | Queries the DB for the `APP_EVALUATIONS` table containing the LLM-generated JSON breakdown (strengths, weaknesses, scores). | Similar to top-candidates, tightly coupled to the Python AI pipeline's JSON structures. |
+
+**Discrepancies in the 29 Ported Endpoints (1-to-1 Parity Check):**
+While functionally solid, a strict 1-to-1 comparison reveals two exact-parity deviations in the Node.js implementation:
+1. **Route Prefix Mismatch:** ✅ **[RESOLVED]** The FastAPI endpoint is `GET /applications/{app_id}/interview-panel-options`. Initially ported as `panel-options`, it has now been correctly renamed to `interview-panel-options` in Node.js to ensure 1-to-1 parity.
+2. **Company Scoping Fallback Logic:** In FastAPI's `create_job` and `create_candidate`, if an admin provides an invalid company ID (or leaves it blank), the system silently defaults/overwrites it to their first allowed company (`allowed_c[0]`). The Node.js controllers were implemented strictly—returning a `403 Forbidden ("Cannot create job for this company")`. While Node.js is more "secure/strict," it fundamentally breaks 1-to-1 frontend fallback expectations.
+
 
 **Details & Issues Resolved in Node.js Recruitment Porting:**
 During the porting of the Part A Recruitment endpoints, several critical issues were identified and successfully resolved to achieve 1:1 parity with the FastAPI implementation:

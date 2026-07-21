@@ -1405,12 +1405,46 @@ export const panelOptionsForApp = async (appId) => {
       `SELECT j.COMPC, j.BRNCH FROM RECRUITMENT_APPLICATIONS a JOIN RECRUITMENT_JOBS j ON j.JOB_ID = a.JOB_ID WHERE a.APP_ID = :appId`,
       { appId }, { outFormat: 4002 }
     );
-    if (!appRes.rows || appRes.rows.length === 0) return [];
+    if (!appRes.rows || appRes.rows.length === 0) {
+      return { status: "error", message: "Application not found" };
+    }
     const job = appRes.rows[0];
+    const compc = job.COMPC;
+    const brnch = job.BRNCH;
 
-    return await listPanelPool(job.COMPC, job.BRNCH);
+    const params = {};
+    const conds = ["p.IS_ACTIVE = 'Y'"];
+    if (compc !== null && compc !== undefined) {
+      conds.push("p.COMPC = :c");
+      params.c = compc;
+    }
+    if (brnch !== null && brnch !== undefined) {
+      conds.push("p.BRNCH = :b");
+      params.b = brnch;
+    }
+
+    const sql = `
+      SELECT p.EMPCODE, MAX(h.NAME) AS NAME,
+             LISTAGG(TO_CHAR(p.BRNCH), ',') WITHIN GROUP (ORDER BY p.BRNCH) AS BRANCHES
+      FROM INTERVIEW_PANEL_POOL p
+      LEFT JOIN HR_EMP_MASTER h ON h.EMPCODE = p.EMPCODE
+      WHERE ${conds.join(' AND ')}
+      GROUP BY p.EMPCODE
+      ORDER BY MAX(h.NAME)
+    `;
+
+    const res = await connection.execute(sql, params, { outFormat: 4002 });
+    
+    const items = (res.rows || []).map(r => ({
+      empcode: r.EMPCODE ? String(r.EMPCODE).trim() : null,
+      name: r.NAME ? String(r.NAME).trim() : null,
+      branches: r.BRANCHES || ""
+    }));
+
+    return { status: "success", compc, brnch, items };
   } catch (e) {
-    return [];
+    if (e.message.includes("ORA-00942")) return { status: "error", message: "Table missing" };
+    return { status: "error", message: e.message };
   } finally {
     await connection?.close();
   }

@@ -397,10 +397,10 @@ Content-Type: application/json
 
 
 ### 24. Get Panel Options for Application (Local) [x]
-GET {{localUrl}}/recruitment/applications/{{appId}}/panel-options?admin_card_no={{admin_card}}
+GET {{localUrl}}/recruitment/applications/{{appId}}/interview-panel-options?admin_card_no={{admin_card}}
 
-### 24. Get Panel Options for Application (Live) [-]
-GET {{liveUrl}}/recruitment/applications/{{appId}}/panel-options?admin_card_no={{admin_card}}
+### 24. Get Panel Options for Application (Live) [x]
+GET {{liveUrl}}/recruitment/applications/{{appId}}/interview-panel-options?admin_card_no={{admin_card}}
 
 
 ### 25. List Notification Templates (Local) [x]

@@ -60,7 +60,7 @@ router.post("/panel-pool", validate(schemas.panelPoolAddSchema), recruitmentCont
 router.delete("/panel-pool/:id", recruitmentController.deactivatePanelRow);
 router.post("/panel-pool/deactivate", validate(schemas.panelPoolDeactivateSchema), recruitmentController.deactivatePanelMember);
 
-router.get("/applications/:app_id/panel-options", recruitmentController.panelOptionsForApp);
+router.get("/applications/:app_id/interview-panel-options", recruitmentController.panelOptionsForApp);
 router.post("/applications/:app_id/interview-assignments", validate(schemas.interviewAssignmentCreateSchema), recruitmentController.createInterviewAssignments);
 router.get("/applications/:app_id/interview-assignments", recruitmentController.listInterviewAssignments);
 
