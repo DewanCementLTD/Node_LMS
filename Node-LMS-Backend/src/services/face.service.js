@@ -13,6 +13,7 @@
 
 import { getDirectConnection } from "../config/database.js";
 
+import { logger } from '../utils/logger.js';
 const OUT_ARRAY = 4001; // oracledb.OUT_FORMAT_ARRAY
 
 // --- repository: EMP_FACE_EMBEDDINGS -------------------------------------
@@ -34,7 +35,7 @@ export const isFaceRegistered = async (cardNo) => {
     if (!row) return { is_registered: false, registered_at: null };
     return { is_registered: true, registered_at: row[1] ? String(row[1]) : null };
   } catch (err) {
-    console.log("FACE REG CHECK ERROR:", err.message);
+    logger.info("FACE REG CHECK ERROR:", err.message);
     return { is_registered: false, registered_at: null };
   } finally {
     await connection?.close();
@@ -87,7 +88,7 @@ export const deleteFaceRegistration = async (cardNo) => {
     );
     return { deleted: result.rowsAffected > 0, rows: result.rowsAffected };
   } catch (err) {
-    console.log("FACE DELETE ERROR:", err.message);
+    logger.info("FACE DELETE ERROR:", err.message);
     return { deleted: false, rows: 0 };
   } finally {
     if (connection) await connection.close();
@@ -111,7 +112,7 @@ export const getAllRegisteredEmployees = async () => {
       emp_name: row[1] || ""
     }));
   } catch (err) {
-    console.log("FACE LIST ERROR:", err.message);
+    logger.info("FACE LIST ERROR:", err.message);
     return [];
   } finally {
     if (connection) await connection.close();

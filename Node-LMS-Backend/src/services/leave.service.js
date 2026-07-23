@@ -1,5 +1,6 @@
 import { getDirectConnection } from '../config/database.js';
 
+import { logger } from '../utils/logger.js';
 const OUT_ARRAY = 4001; // oracledb.OUT_FORMAT_ARRAY
 
 // ---------------------------------------------------------------------------
@@ -34,7 +35,7 @@ const leaveTypesMeta = async (connection) => {
     cols = (r.metaData ?? []).map((m) => String(m.name).toUpperCase());
     rows = r.rows ?? [];
   } catch (e) {
-    console.log(`[LEAVE_TYPES] read failed: ${e.message ?? e}`);
+    logger.info(`[LEAVE_TYPES] read failed: ${e.message ?? e}`);
     return [];
   }
 
@@ -119,7 +120,7 @@ export const getLeaveTypesData = async (card_no) => {
       );
       balances = r.rows ?? [];
     } catch (e) {
-      console.log(`[LEAVE_TYPES] ALL_LEAVE_BAL_V query failed: ${e.message ?? e}`);
+      logger.info(`[LEAVE_TYPES] ALL_LEAVE_BAL_V query failed: ${e.message ?? e}`);
     }
 
     // Only the LEAVE_TYPES LOV is offered for applying — extra ALL_LEAVE_BAL_V
@@ -245,7 +246,7 @@ export const applyLeaveData = async (card_no, body) => {
         };
       }
     } catch (e) {
-      console.log(`[LEAVE] Balance check warning: ${e.message ?? e}`);
+      logger.info(`[LEAVE] Balance check warning: ${e.message ?? e}`);
       // Continue if view doesn't exist — let insert proceed
     }
 

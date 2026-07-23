@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import pinoHttp from 'pino-http';
+import { getRouteLogger, logger } from '../utils/logger.js';
+
 import appVersionRoutes from './appVersion.routes.js';
 import authRoutes from './auth.routes.js';
 import documentsRoutes from './documents.routes.js';
@@ -11,14 +14,24 @@ import recruitmentRoutes from './recruitment.routes.js';
 
 const router = Router();
 
-router.use('/app', appVersionRoutes); // http://localhost:8000/app/* (mobile update flow: version-check + APK download)
-router.use('/auth', authRoutes); // http://localhost:8000/auth/*
-router.use('/documents', documentsRoutes); // http://localhost:8000/documents/* (employee documents, photos, company logo)
-router.use('/hr', hrRoutes); // http://localhost:8000/hr/* (HR-admin: search + face enroll)
-router.use('/hrms', hrmsRoutes); // http://localhost:8000/hrms/* (HR-admin: employees, dashboard, attendance, roster)
-router.use('/reference', referenceRoutes); // http://localhost:8000/reference/*
-router.use('/location-tracking', locationTrackingRoutes); // http://localhost:8000/location-tracking/*
-router.use('/face', faceRoutes); // http://localhost:8000/face/*
-router.use('/recruitment', recruitmentRoutes); // http://localhost:8000/recruitment/*
+const reqLogger = (prefix) => pinoHttp({
+  logger: getRouteLogger(prefix),
+  customSuccessMessage: (req, res) => `HTTP ${req.method} ${req.url} completed with ${res.statusCode}`,
+  customErrorMessage: (req, res, err) => `HTTP ${req.method} ${req.url} failed with ${res.statusCode} - ${err.message}`,
+  serializers: {
+    req: (req) => ({ method: req.method, url: req.url }),
+    res: (res) => ({ statusCode: res.statusCode }),
+  },
+});
+
+router.use('/app', reqLogger('app'), appVersionRoutes);
+router.use('/auth', reqLogger('auth'), authRoutes);
+router.use('/documents', reqLogger('documents'), documentsRoutes);
+router.use('/hr', reqLogger('hr'), hrRoutes);
+router.use('/hrms', reqLogger('hrms'), hrmsRoutes);
+router.use('/reference', reqLogger('reference'), referenceRoutes);
+router.use('/location-tracking', reqLogger('location-tracking'), locationTrackingRoutes);
+router.use('/face', reqLogger('face'), faceRoutes);
+router.use('/recruitment', reqLogger('recruitment'), recruitmentRoutes);
 
 export default router;

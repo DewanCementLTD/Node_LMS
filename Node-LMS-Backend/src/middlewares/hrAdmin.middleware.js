@@ -1,5 +1,6 @@
 import { getDirectConnection } from "../config/database.js";
 
+import { logger } from '../utils/logger.js';
 export const requireHrAdmin = async (req, res, next) => {
   let connection;
 
@@ -42,7 +43,7 @@ export const requireHrAdmin = async (req, res, next) => {
         mobile = admin_card_no;
       }
     } catch (err) {
-      console.error("[HR_ADMIN] employee lookup failed:", err);
+      logger.error("[HR_ADMIN] employee lookup failed:", err);
       mobile = admin_card_no;
     }
 
@@ -76,7 +77,7 @@ export const requireHrAdmin = async (req, res, next) => {
     const m1 = mobile;
     const m2 = mobile.startsWith("0") ? mobile : "0" + mobile;
     const m3 = mobile.startsWith("0") ? mobile.substring(1) : mobile;
-    console.log("[HR_ADMIN] Checking mobile numbers:", m1, m2, m3);
+    logger.info("[HR_ADMIN] Checking mobile numbers:", m1, m2, m3);
     const result = await connection.execute(
       `
       SELECT COUNT(*) CNT

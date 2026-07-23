@@ -3,6 +3,7 @@ import path from 'path';
 import * as recruitmentService from "../services/recruitment.service.js";
 import { resolveFilterLists } from "../services/adminRights.service.js";
 
+import { logger } from '../utils/logger.js';
 const handleResult = (res, result) => {
   if (result.status === "error") {
     return res.status(result.code || 400).json({ detail: result.message });
@@ -698,7 +699,7 @@ export const applyCandidate = async (req, res, next) => {
     
     // Kick off evaluation in background (Promises don't block Express response)
     recruitmentService.evaluateApplication(app_id, candidate_id, job_id).catch(err => {
-      console.error(`Background evaluation failed for app ${app_id}:`, err);
+      logger.error(`Background evaluation failed for app ${app_id}:`, err);
     });
     
     res.json({

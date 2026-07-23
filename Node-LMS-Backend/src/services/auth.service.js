@@ -1,5 +1,6 @@
 import { getDirectConnection } from '../config/database.js';
 
+import { logger } from '../utils/logger.js';
 const OBJ = { outFormat: 4002 };
 
 // ---------------------------------------------------------------------------
@@ -61,7 +62,7 @@ const getEmployeeFlags = async (card_no) => {
       }
     } catch (e1) {
       const msg = String(e1.message ?? e1);
-      console.log(`[get_employee_flags] Attempt 1 failed: ${msg}`);
+      logger.info(`[get_employee_flags] Attempt 1 failed: ${msg}`);
       if (!msg.includes('ORA-00904') && !msg.includes('ORA-00942')) throw e1;
     }
 
@@ -77,7 +78,7 @@ const getEmployeeFlags = async (card_no) => {
         return { emp_name: row.name || '', face_registered: 'N', hr_admin: 'N', empcode: row.empcode || '' };
       }
     } catch (e3) {
-      console.log(`[get_employee_flags] Attempt 3 (HR_EMP_MASTER direct) failed: ${e3.message ?? e3}`);
+      logger.info(`[get_employee_flags] Attempt 3 (HR_EMP_MASTER direct) failed: ${e3.message ?? e3}`);
     }
 
     // Attempt 4: EMPLOYEE only
@@ -91,7 +92,7 @@ const getEmployeeFlags = async (card_no) => {
       if (!row) return { ...DEFAULT_FLAGS };
       return { emp_name: row.emp_name || '', face_registered: 'N', hr_admin: 'N', empcode: '' };
     } catch (e4) {
-      console.log(`[get_employee_flags] Attempt 4 (EMPLOYEE only) failed: ${e4.message ?? e4}`);
+      logger.info(`[get_employee_flags] Attempt 4 (EMPLOYEE only) failed: ${e4.message ?? e4}`);
       return { ...DEFAULT_FLAGS };
     }
   } finally {
@@ -138,7 +139,7 @@ const authenticateStep = async (username, password) => {
         secRow = r2.rows?.[0] ?? null;
       }
     } catch (e) {
-      console.log(`[AUTH] SEC_USERNAME query failed: ${e.message ?? e}`);
+      logger.info(`[AUTH] SEC_USERNAME query failed: ${e.message ?? e}`);
     }
 
     let secAuthenticated = false;
@@ -153,14 +154,14 @@ const authenticateStep = async (username, password) => {
         const decVal = dec.rows?.[0]?.dec;
         storedPaswd = decVal ? String(decVal).trim() : null;
       } catch (e) {
-        console.log(`[AUTH] datacrypt.decryptdata failed for USRID=${secRow.usrid}: ${e.message ?? e}`);
+        logger.info(`[AUTH] datacrypt.decryptdata failed for USRID=${secRow.usrid}: ${e.message ?? e}`);
         storedPaswd = decodeSecPaswd(String(secRow.paswd ?? ''));
       }
 
       if ((storedPaswd ?? '').trim() === (password ?? '').trim()) {
         secAuthenticated = true;
       } else {
-        console.log(`[AUTH] SEC_USERNAME found but password mismatch for ${username}, trying HR_EMP_MASTER`);
+        logger.info(`[AUTH] SEC_USERNAME found but password mismatch for ${username}, trying HR_EMP_MASTER`);
       }
     }
 
@@ -226,7 +227,7 @@ const authenticateStep = async (username, password) => {
         companies = rows.map((row) => String(row.compc));
         companyList = rows.map((row) => ({ code: String(row.compc), name: String(row.name ?? row.compc) }));
       } catch (e) {
-        console.log(`[AUTH] SEC_USERCMPN query failed for USRID=${usridNumeric}: ${e.message ?? e}`);
+        logger.info(`[AUTH] SEC_USERCMPN query failed for USRID=${usridNumeric}: ${e.message ?? e}`);
       }
 
       try {
@@ -247,7 +248,7 @@ const authenticateStep = async (username, password) => {
           compc: row.compc !== null && row.compc !== undefined ? String(row.compc).trim() : null,
         }));
       } catch (e) {
-        console.log(`[AUTH] SEC_USERBRCH query failed for USRID=${usridNumeric}: ${e.message ?? e}`);
+        logger.info(`[AUTH] SEC_USERBRCH query failed for USRID=${usridNumeric}: ${e.message ?? e}`);
       }
 
       return {
@@ -306,7 +307,7 @@ const authenticateStep = async (username, password) => {
         };
       }
     } catch (e) {
-      console.log(`[AUTH] HR_EMP_MASTER query failed: ${e.message ?? e}`);
+      logger.info(`[AUTH] HR_EMP_MASTER query failed: ${e.message ?? e}`);
     }
 
     // Fallback: EMPLOYEE table
@@ -341,7 +342,7 @@ const authenticateStep = async (username, password) => {
         };
       }
     } catch (e) {
-      console.log(`[AUTH] EMPLOYEE fallback failed: ${e.message ?? e}`);
+      logger.info(`[AUTH] EMPLOYEE fallback failed: ${e.message ?? e}`);
     }
 
     return null;
@@ -363,7 +364,7 @@ export const authenticateUser = async (username, password) => {
       if (!user.emp_name) user.emp_name = flags.emp_name || '';
       if (!user.empcode) user.empcode = flags.empcode || '';
     } catch (e) {
-      console.log(`[LOGIN] get_employee_flags failed (non-fatal): ${e.message ?? e}`);
+      logger.info(`[LOGIN] get_employee_flags failed (non-fatal): ${e.message ?? e}`);
     }
   }
 
@@ -404,7 +405,7 @@ const getEmergencyContact = async (connection, card_no) => {
       };
     }
   } catch (e) {
-    console.log(`[PROFILE] emergency contact lookup failed for ${card_no}: ${e.message ?? e}`);
+    logger.info(`[PROFILE] emergency contact lookup failed for ${card_no}: ${e.message ?? e}`);
   }
   return null;
 };
@@ -476,7 +477,7 @@ export const lookupByPhone = async (phone) => {
         }
       }
     } catch (e) {
-      console.log(`[LOOKUP] HR_EMP_MASTER query failed: ${e.message ?? e}`);
+      logger.info(`[LOOKUP] HR_EMP_MASTER query failed: ${e.message ?? e}`);
     }
 
     // Fallback to EMPLOYEE
@@ -537,7 +538,7 @@ const getUserByLogin = async (login) => {
         };
       }
     } catch (e) {
-      console.log(`[LOGIN] HR_EMP_MASTER query failed: ${e.message ?? e}`);
+      logger.info(`[LOGIN] HR_EMP_MASTER query failed: ${e.message ?? e}`);
     }
 
     // Fallback to EMPLOYEE table
@@ -627,7 +628,7 @@ export const saveEmergencyContact = async (card_no, name, relationship, phone) =
     );
     return { status: 'success', message: 'Emergency contact saved' };
   } catch (err) {
-    console.error(`[PROFILE] emergency contact save failed for ${card_no}:`, err);
+    logger.error(`[PROFILE] emergency contact save failed for ${card_no}:`, err);
     return { status: 'error', message: err.message };
   } finally {
     await connection?.close();

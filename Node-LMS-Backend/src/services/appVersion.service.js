@@ -11,6 +11,7 @@
 import oracledb from 'oracledb';
 import { getDirectConnection } from '../config/database.js';
 
+import { logger } from '../utils/logger.js';
 // ---------------------------------------------------------------------------
 // Version-string helpers (mirror _parse_ver / _cmp_ver / _to_int)
 // ---------------------------------------------------------------------------
@@ -96,7 +97,7 @@ export const getAppVersionConfig = async (platform = 'ANDROID') => {
     }
     return {};
   } catch (e) {
-    console.log(`[APP_VERSION] config read failed (no enforcement): ${e.message ?? e}`);
+    logger.info(`[APP_VERSION] config read failed (no enforcement): ${e.message ?? e}`);
     return {};
   } finally {
     await connection?.close();
@@ -154,7 +155,7 @@ export const forceUpdateBlock = async (version = null, build = null, platform = 
     const res = await evaluateAppVersion(version, build, platform);
     if (res.force) return { message: res.message, update_url: res.update_url };
   } catch (e) {
-    console.log(`[APP_VERSION] force check skipped: ${e.message ?? e}`);
+    logger.info(`[APP_VERSION] force check skipped: ${e.message ?? e}`);
   }
   return null;
 };

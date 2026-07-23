@@ -22,6 +22,7 @@ import path from 'path';
 import oracledb from 'oracledb';
 import { getDirectConnection } from '../config/database.js';
 
+import { logger } from '../utils/logger.js';
 // Root directory for all employee documents. Overridable via EMP_DOCS_ROOT.
 // Default: C:\Erp_Systems\HRMS_LMS_APP\EMP_DOCS — same location the FastAPI
 // backend writes to, so both servers see the same files.
@@ -226,7 +227,7 @@ export const deleteDocument = async (docId) => {
       try {
         fs.unlinkSync(doc.abs_path);
       } catch (e) {
-        console.log(`[DOCS] file remove failed (row deleted): ${e.message ?? e}`);
+        logger.info(`[DOCS] file remove failed (row deleted): ${e.message ?? e}`);
       }
     }
     return { status: 'success' };
@@ -295,7 +296,7 @@ export const getEmployeePhotoAbs = async (empcode) => {
     const rel = r ? String(r[0] ?? '').trim() : '';
     if (!rel) return null;
     const absPath = path.isAbsolute(rel) ? rel : path.join(DOCS_BASE, rel);
-    console.log(absPath);
+    logger.info(absPath);
     return fs.existsSync(absPath) && fs.statSync(absPath).isFile() ? absPath : null;
   } finally {
     await connection?.close();

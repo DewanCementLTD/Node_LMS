@@ -1,6 +1,7 @@
 import { authenticateUser, getProfile, lookupByPhone, changePassword, saveEmergencyContact as saveEmergencyContactService } from '../services/auth.service.js';
 import { forceUpdateBlock } from '../services/appVersion.service.js';
 
+import { logger } from '../utils/logger.js';
 export const login = async (req, res, next) => {
   try {
     const { username, password, app_version, app_build, platform } = res.locals.validated.body;
@@ -51,7 +52,7 @@ export const updatePassword = async (req, res, next) => {
   try {
     const { card_no } = res.locals.validated.params;
     const { old_password, new_password } = res.locals.validated.body;
-    console.log(`Attempting to change password for card_no: ${card_no}, old_password: ${old_password}, new_password: ${new_password}`); // Debugging line
+    logger.info(`Attempting to change password for card_no: ${card_no}, old_password: ${old_password}, new_password: ${new_password}`); // Debugging line
     const result = await changePassword(card_no, old_password, new_password);
     if (!result.success)
       return res.status(400).json({ detail: 'Current password is incorrect.' });

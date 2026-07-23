@@ -1,5 +1,6 @@
 import { getDirectConnection } from "../config/database.js";
 import { safeInt } from "../utils/conversionHelpers.js";
+import { logger } from '../utils/logger.js';
 import {
   buildNumericInClause,
   buildStringInClause,
@@ -96,7 +97,7 @@ export const batchInsertLocations = async (card_no, locations) => {
 
     await connection.commit();
 
-    console.log(`[LOCATION] Saved ${inserted} points for card=${card_no}`);
+    logger.info(`[LOCATION] Saved ${inserted} points for card=${card_no}`);
 
     return inserted;
   } catch (err) {
@@ -108,7 +109,7 @@ export const batchInsertLocations = async (card_no, locations) => {
       }
     }
 
-    console.error("[LOCATION] Batch insert error:", err);
+    logger.error("[LOCATION] Batch insert error:", err);
     throw err;
   } finally {
     if (connection) {
@@ -170,8 +171,8 @@ export const saveAttendanceOriginPoint = async (card_no, latitude, longitude, ac
     );
     const inserted = result.rowsAffected ?? 0;
     if (inserted)
-      console.log(`[LOCATION] Attendance-origin point saved for card=${card_no} (${lat},${lon})`);
-    else console.log(`[LOCATION] Attendance-origin point already present for card=${card_no}`);
+      logger.info(`[LOCATION] Attendance-origin point saved for card=${card_no} (${lat},${lon})`);
+    else logger.info(`[LOCATION] Attendance-origin point already present for card=${card_no}`);
     return Boolean(inserted);
   } catch (e) {
     try {
@@ -179,7 +180,7 @@ export const saveAttendanceOriginPoint = async (card_no, latitude, longitude, ac
     } catch {
       /* ignore */
     }
-    console.log(`[LOCATION] Attendance-origin insert failed (non-fatal): ${e.message ?? e}`);
+    logger.info(`[LOCATION] Attendance-origin insert failed (non-fatal): ${e.message ?? e}`);
     return false;
   } finally {
     await connection?.close();
@@ -548,7 +549,7 @@ const fetchTrailRows = async (connection, { fromDate, toDate, ...filters }) => {
     return result.rows ?? [];
   } catch (err) {
     if (optionalFilter && isMissingColumnError(err)) {
-      console.warn(
+      logger.warn(
         `[LOCATION_REPORT] region/category column missing, ignoring those filters: ${err.message}`,
       );
       const result = await connection.execute(

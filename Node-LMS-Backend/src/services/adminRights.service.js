@@ -1,5 +1,6 @@
 import { getDirectConnection } from "../config/database.js";
 
+import { logger } from '../utils/logger.js';
 /**
  * Resolves an HR admin's company/branch (UNIT_ID/LOCATION) rights so report
  * endpoints can intersect a caller-selected compc/brnch with what the admin
@@ -155,7 +156,7 @@ export const adminCanEditSalary = async (cardNo) => {
     if (!rows.length) return true;
     return rows.some((r) => String(r.ULEVL ?? "").trim().toUpperCase() === "M");
   } catch (err) {
-    console.error("[RIGHTS] adminCanEditSalary check failed (allowing):", err.message);
+    logger.error("[RIGHTS] adminCanEditSalary check failed (allowing):", err.message);
     return true;
   } finally {
     await connection?.close();

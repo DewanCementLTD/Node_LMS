@@ -6,6 +6,7 @@ import { resolveFilterLists } from "./adminRights.service.js";
 import { safeName, DOCS_ROOT, DOCS_BASE } from './documents.service.js';
 import { evaluateCv } from './cvEvaluator.service.js';
 
+import { logger } from '../utils/logger.js';
 const rToInt = (v) => {
   const num = parseInt(v, 10);
   return isNaN(num) ? null : num;
@@ -64,7 +65,7 @@ const _scopedList = async (connection, sqlWithPlaceholder, baseConditions, baseP
       return await _run(where, scopedParams);
     } catch (e) {
       if (!e.message.includes("ORA-00904")) throw e;
-      console.warn(`[RECRUITMENT] COMPC/BRNCH absent, listing unscoped: ${e.message}`);
+      logger.warn(`[RECRUITMENT] COMPC/BRNCH absent, listing unscoped: ${e.message}`);
     }
   }
   return await _run(baseWhere, baseParams);
@@ -907,7 +908,7 @@ export const listCandidates = async (search = null, compc = null, brnch = null) 
       return await runList(where, params);
     } catch (e) {
       if (!e.message.includes("ORA-00904") || !scope) throw e;
-      console.warn(`[RECRUITMENT] candidate COMPC/BRNCH absent, listing unscoped: ${e.message}`);
+      logger.warn(`[RECRUITMENT] candidate COMPC/BRNCH absent, listing unscoped: ${e.message}`);
       const unscopedParams = {};
       for (const [k, v] of Object.entries(params)) {
         if (!k.startsWith("jc") && !k.startsWith("jb") && !k.startsWith("cc") && !k.startsWith("cb")) {
@@ -1213,7 +1214,7 @@ export const getAnalytics = async (compc = null, brnch = null) => {
       return await runAnalytics(whereClause, sp);
     } catch (e) {
       if (!e.message.includes("ORA-00904") || !scope) throw e;
-      console.warn(`[RECRUITMENT] COMPC/BRNCH absent, analytics unscoped: ${e.message}`);
+      logger.warn(`[RECRUITMENT] COMPC/BRNCH absent, analytics unscoped: ${e.message}`);
       return await runAnalytics("WHERE 1=1", {});
     }
 
@@ -2878,7 +2879,7 @@ export const evaluateApplication = async (appId, candidateId, jobId) => {
     const result = await storeEvaluation(appId, assessment.evaluation || {}, stats, total);
     return result;
   } catch (err) {
-    console.error("Apply-eval failed:", err.message);
+    logger.error("Apply-eval failed:", err.message);
     return { status: "error", message: err.message };
   }
 };
@@ -2918,7 +2919,7 @@ export const matchCandidatesDeep = async (jobId, top = 20, compc = null, brnch =
       entry.ai_overall_score = evaluation.overall_score;
       entry.ai_recommendation = evaluation.recommendation;
     } catch (err) {
-      console.error(`Deep eval failed for candidate ${cid}:`, err.message);
+      logger.error(`Deep eval failed for candidate ${cid}:`, err.message);
       entry.deep_error = err.message;
     }
   };

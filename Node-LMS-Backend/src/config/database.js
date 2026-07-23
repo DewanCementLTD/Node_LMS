@@ -1,10 +1,11 @@
 import oracledb from 'oracledb';
+import { logger } from '../utils/logger.js';
 import 'dotenv/config';
 
 try {
   oracledb.initOracleClient({ libDir: 'C:\\oraclexe\\app\\oracle\\product\\11.2.0\\server\\bin' });
 } catch (err) {
-  console.error('Failed to initialize Oracle Thick mode:', err);
+  logger.error('Failed to initialize Oracle Thick mode:', err);
   process.exit(1);
 }
 
@@ -21,9 +22,9 @@ const initializePool = async () => {
       poolMax: 10,
       poolIncrement: 1
     });
-    console.log('Oracle Connection Pool initialized successfully');
+    logger.info('Oracle Connection Pool initialized successfully');
   } catch (err) {
-    console.error('Failed to create Oracle connection pool:', err);
+    logger.error('Failed to create Oracle connection pool:', err);
   }
 };
 
@@ -39,7 +40,7 @@ export const getDirectConnection = async () => {
   try {
     return await pool.getConnection();
   } catch (err) {
-    console.error('Failed to get connection from pool:', err);
+    logger.error('Failed to get connection from pool:', err);
     throw err;
   }
 };

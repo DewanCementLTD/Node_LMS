@@ -17,6 +17,7 @@ import { cardInt } from '../utils/conversionHelpers.js';
 import { saveAttendanceOriginPoint } from './location.service.js';
 import { cleanHHMM, rosterStatus } from '../utils/rosterStatus.js';
 
+import { logger } from '../utils/logger.js';
 const OBJ = { outFormat: oracledb.OUT_FORMAT_OBJECT };
 
 // ---------------------------------------------------------------------------
@@ -147,7 +148,7 @@ const runWithRetry = async (fn, attempts = 5, what = '') => {
       return await fn();
     } catch (e) {
       if (!isTransientDbError(e) || i === attempts - 1) throw e;
-      console.log(
+      logger.info(
         `[ATTENDANCE] transient error${what ? ' on ' + what : ''}, retry ${i + 1}/${attempts}: ${e.message ?? e}`,
       );
       await sleep(50 * (i + 1));
@@ -298,7 +299,7 @@ const insertCheckIn = async (card_no, empcode, opts = {}) => {
         'ATTENDANCE_RECORDS',
       );
     } catch (arErr) {
-      console.log(`[ATTENDANCE_RECORDS] MERGE failed (non-fatal): ${arErr.message ?? arErr}`);
+      logger.info(`[ATTENDANCE_RECORDS] MERGE failed (non-fatal): ${arErr.message ?? arErr}`);
     }
 
     await connection.commit();
@@ -309,7 +310,7 @@ const insertCheckIn = async (card_no, empcode, opts = {}) => {
       try {
         await saveAttendanceOriginPoint(card_no, latitude, longitude, accuracy);
       } catch (locErr) {
-        console.log(`[CHECK_IN] LOCATION_TRACKS origin point failed (non-fatal): ${locErr.message ?? locErr}`);
+        logger.info(`[CHECK_IN] LOCATION_TRACKS origin point failed (non-fatal): ${locErr.message ?? locErr}`);
       }
     }
 
@@ -326,7 +327,7 @@ const insertCheckIn = async (card_no, empcode, opts = {}) => {
     } catch {
       /* ignore */
     }
-    console.log(`[CHECK_IN] Fatal error for card=${card_no}: ${e.message ?? e}`);
+    logger.info(`[CHECK_IN] Fatal error for card=${card_no}: ${e.message ?? e}`);
     return { status: 'error', message: String(e.message ?? e) };
   } finally {
     await connection?.close();
@@ -468,7 +469,7 @@ const getOpenOvernightRecord = async (card_no) => {
       source: 'attendance_records',
     };
   } catch (e) {
-    console.log(`[OVERNIGHT] lookup failed for card=${card_no}: ${e.message ?? e}`);
+    logger.info(`[OVERNIGHT] lookup failed for card=${card_no}: ${e.message ?? e}`);
     return null;
   } finally {
     await connection?.close();
@@ -498,7 +499,7 @@ export const smartMarkAttendance = async (card_no, attendance_type = 'check_in',
     // No record for today. Check for overnight shift closure first.
     const overnight = await getOpenOvernightRecord(card_no);
     if (overnight !== null) {
-      console.log(
+      logger.info(
         `[ATTENDANCE] card=${card_no} → overnight check-out, closing prior shift (in ${overnight.entry_time})`,
       );
       const coAddr = opts.formatted_address || opts.address || null;
@@ -510,7 +511,7 @@ export const smartMarkAttendance = async (card_no, attendance_type = 'check_in',
       });
     }
 
-    console.log(`[ATTENDANCE] card=${card_no} → no record today, checking in`);
+    logger.info(`[ATTENDANCE] card=${card_no} → no record today, checking in`);
     const empcode = await getEmpcode(card_no);
     return insertCheckIn(card_no, empcode, checkInOpts);
   }
@@ -524,7 +525,7 @@ export const smartMarkAttendance = async (card_no, attendance_type = 'check_in',
     if (!exit_) {
       const minsSinceIn = timeSpentMinutes(entry, nowHHMM());
       if (minsSinceIn < MIN_CHECKOUT_GAP_MIN) {
-        console.log(
+        logger.info(
           `[ATTENDANCE] card=${card_no} → mark ${minsSinceIn}min after check-in (<${MIN_CHECKOUT_GAP_MIN}), keeping checked-in (no check-out yet)`,
         );
         return {
@@ -538,7 +539,7 @@ export const smartMarkAttendance = async (card_no, attendance_type = 'check_in',
     }
 
     // Already has an IN → this (later) mark becomes/extends the check-out.
-    console.log(
+    logger.info(
       `[ATTENDANCE] card=${card_no} → has entry (${entry}, out=${exit_ || '-'}), updating check-out`,
     );
     const coAddr = opts.formatted_address || opts.address || null;
@@ -551,7 +552,7 @@ export const smartMarkAttendance = async (card_no, attendance_type = 'check_in',
   }
 
   // Row exists but ENTRY_TIME empty (pre-generated roster row, no clock-in yet).
-  console.log(`[ATTENDANCE] card=${card_no} → row exists but no ENTRY_TIME, checking in`);
+  logger.info(`[ATTENDANCE] card=${card_no} → row exists but no ENTRY_TIME, checking in`);
   const empcode = await getEmpcode(card_no);
   return insertCheckIn(card_no, empcode, checkInOpts);
 };
@@ -691,7 +692,7 @@ export const getRosterEmployeeName = async (card_no) => {
     );
     return result.rows?.[0]?.emp_name ?? null;
   } catch (e) {
-    console.error(`[ROSTER] Error fetching employee name for ${card_no}:`, e);
+    logger.error(`[ROSTER] Error fetching employee name for ${card_no}:`, e);
     return null;
   } finally {
     await connection?.close();
@@ -725,7 +726,7 @@ export const getPdfEmployeeDetails = async (card_no) => {
     const result = await connection.execute(sql, { card_no }, OBJ);
     return result.rows?.[0] ?? null;
   } catch (e) {
-    console.error(`[ROSTER] Error fetching employee details for ${card_no}:`, e);
+    logger.error(`[ROSTER] Error fetching employee details for ${card_no}:`, e);
     return null;
   } finally {
     await connection?.close();

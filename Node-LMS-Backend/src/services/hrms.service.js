@@ -17,6 +17,7 @@ import {
 } from "../utils/hrmsFilters.js";
 import { cleanHHMM, rosterStatus } from "../utils/rosterStatus.js";
 
+import { logger } from '../utils/logger.js';
 const OUT_OBJECT = 4002; // oracledb.OUT_FORMAT_OBJECT
 const OUT_ARRAY = 4001; // oracledb.OUT_FORMAT_ARRAY
 
@@ -130,7 +131,7 @@ const saveQualificationDetail = async (connection, empcode, data) => {
     await connection.commit();
   } catch (err) {
     try { await connection.rollback(); } catch { /* ignore */ }
-    console.log(`[HRMS] qualification detail save skipped (non-fatal): ${String(err.message).slice(0, 90)}`);
+    logger.info(`[HRMS] qualification detail save skipped (non-fatal): ${String(err.message).slice(0, 90)}`);
   }
 };
 
@@ -290,7 +291,7 @@ export const getEmployeeByEmpcode = async (empcode) => {
       result = await connection.execute(extendedSql, { empcode }, { outFormat: OUT_OBJECT });
     } catch (err) {
       if (String(err.message).includes("ORA-00904") || String(err.message).includes("ORA-00942")) {
-        console.log(`[HRMS] employee extended read fell back: ${String(err.message).slice(0, 90)}`);
+        logger.info(`[HRMS] employee extended read fell back: ${String(err.message).slice(0, 90)}`);
         result = await connection.execute(baseSql, { empcode }, { outFormat: OUT_OBJECT });
       } else {
         throw err;
@@ -516,7 +517,7 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
         compc, brnch, { options: { outFormat: OUT_ARRAY } }
       );
       totalEmployees = r.rows?.[0]?.[0] || 0;
-    } catch (e) { console.log(`[HR_DASHBOARD] Total count failed: ${e.message}`); }
+    } catch (e) { logger.info(`[HR_DASHBOARD] Total count failed: ${e.message}`); }
 
     let present = 0, absent = 0, late = 0, incomplete = 0, onLeave = 0;
 
@@ -533,7 +534,7 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
             WHERE TRUNC(ATTENDANCE_DATE) = ${td} AND ENTRY_TIME IS NOT NULL${cf}
         )`, p, { outFormat: OUT_ARRAY });
       present = parseInt(r.rows?.[0]?.[0] || 0, 10);
-    } catch (e) { console.log(`[HR_DASHBOARD] Present count query failed: ${e.message}`); }
+    } catch (e) { logger.info(`[HR_DASHBOARD] Present count query failed: ${e.message}`); }
 
     // Late / incomplete / on-leave from DUTY_ROSTER
     try {
@@ -553,7 +554,7 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
         onLeave = parseInt(row[2] || 0, 10);
       }
     } catch (e) {
-      console.log(`[HR_DASHBOARD] DUTY_ROSTER stats failed: ${e.message}`);
+      logger.info(`[HR_DASHBOARD] DUTY_ROSTER stats failed: ${e.message}`);
       try {
         const p = {};
         const cf = rosterCardFilter(compc, brnch, p, "ic");
@@ -593,7 +594,7 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
       for (const row of r.rows ?? []) {
         deptBreakdown.push({ department: row[0] || "Unknown", total: parseInt(row[1] || 0, 10), present: parseInt(row[2] || 0, 10) });
       }
-    } catch (e) { console.log(`[HR_DASHBOARD] Department breakdown failed: ${e.message}`); }
+    } catch (e) { logger.info(`[HR_DASHBOARD] Department breakdown failed: ${e.message}`); }
 
     // Recent hires (last 30 days)
     let recentHires = 0;
@@ -623,7 +624,7 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
         yesterdayOnLeave = parseInt(row[1] || 0, 10);
         yesterdayAbsent = Math.max(totalEmployees - yesterdayPresent - yesterdayOnLeave, 0);
       }
-    } catch (e) { console.log(`[HR_DASHBOARD] Yesterday stats failed: ${e.message}`); }
+    } catch (e) { logger.info(`[HR_DASHBOARD] Yesterday stats failed: ${e.message}`); }
 
     // Upcoming birthdays (next 14 days)
     const upcomingBirthdays = [];
@@ -644,7 +645,7 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
       for (const row of r.rows ?? []) {
         upcomingBirthdays.push({ name: row[0] || "Unknown", date: row[1] || "", dept: row[2] || "N/A", days_until: parseInt(row[3] || 0, 10) });
       }
-    } catch (e) { console.log(`[HR_DASHBOARD] Birthdays failed: ${e.message}`); }
+    } catch (e) { logger.info(`[HR_DASHBOARD] Birthdays failed: ${e.message}`); }
 
     // Upcoming work anniversaries (next 14 days)
     const upcomingAnniversaries = [];
@@ -669,7 +670,7 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
       for (const row of r.rows ?? []) {
         upcomingAnniversaries.push({ name: row[0] || "Unknown", date: row[1] || "", years: parseInt(row[2] || 1, 10), dept: row[3] || "N/A", days_until: parseInt(row[4] || 0, 10) });
       }
-    } catch (e) { console.log(`[HR_DASHBOARD] Anniversaries failed: ${e.message}`); }
+    } catch (e) { logger.info(`[HR_DASHBOARD] Anniversaries failed: ${e.message}`); }
 
     // Upcoming leave requests (next 30 days)
     const upcomingLeaves = [];
@@ -699,7 +700,7 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
           dept: row[6] || "N/A",
         });
       }
-    } catch (e) { console.log(`[HR_DASHBOARD] Upcoming leaves failed: ${e.message}`); }
+    } catch (e) { logger.info(`[HR_DASHBOARD] Upcoming leaves failed: ${e.message}`); }
 
     // Shift-wise attendance
     const shiftWise = [];
@@ -719,7 +720,7 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
         const presentS = parseInt(row[1] || 0, 10);
         shiftWise.push({ shift: row[0] || "Day", present: presentS, total: totalS, pct: Math.round((totalS > 0 ? (presentS / totalS) * 100 : 0) * 10) / 10 });
       }
-    } catch (e) { console.log(`[HR_DASHBOARD] Shift-wise failed: ${e.message}`); }
+    } catch (e) { logger.info(`[HR_DASHBOARD] Shift-wise failed: ${e.message}`); }
 
     // Top absence/leave reasons this year
     const topReasons = [];
@@ -733,7 +734,7 @@ export const getHrDashboardStats = async (qdate = null, compc = null, brnch = nu
         GROUP BY NVL(lt.LEAVE_DESC, 'Type ' || TO_CHAR(la.LEAVE_TYPE_FK))
         ORDER BY cnt DESC`, {}, { outFormat: OUT_ARRAY });
       for (const row of r.rows ?? []) topReasons.push({ reason: row[0] || "Other", count: parseInt(row[1] || 0, 10) });
-    } catch (e) { console.log(`[HR_DASHBOARD] Top reasons failed: ${e.message}`); }
+    } catch (e) { logger.info(`[HR_DASHBOARD] Top reasons failed: ${e.message}`); }
 
     // Inactive count for turnover computation
     let inactiveCount = 0;
@@ -807,7 +808,7 @@ export const getHrAnalytics = async (qdate = null, compc = null, brnch = null) =
         overtimeHours = Math.round(parseFloat(row[2] || 0) * 10) / 10;
         avgWorkHrs = Math.round(parseFloat(row[3] || 0) * 10) / 10;
       }
-    } catch (e) { console.log(`[HR_ANALYTICS] KPI query failed: ${e.message}`); }
+    } catch (e) { logger.info(`[HR_ANALYTICS] KPI query failed: ${e.message}`); }
 
     try {
       const r = await connection.execute(`
@@ -870,7 +871,7 @@ export const getHrAnalytics = async (qdate = null, compc = null, brnch = null) =
       for (const row of r.rows ?? []) {
         daily.push({ day: row[0], on_time: parseInt(row[1] || 0, 10), late: parseInt(row[2] || 0, 10), absent: parseInt(row[3] || 0, 10) });
       }
-    } catch (e) { console.log(`[HR_ANALYTICS] Daily query failed: ${e.message}`); }
+    } catch (e) { logger.info(`[HR_ANALYTICS] Daily query failed: ${e.message}`); }
 
     // Monthly attendance statistics — last 6 months
     const monthly = [];
@@ -923,7 +924,7 @@ export const getHrAnalytics = async (qdate = null, compc = null, brnch = null) =
           absenteeism_rate: Math.round((total > 0 ? (absentCnt / total) * 100 : 2) * 10) / 10,
         });
       }
-    } catch (e) { console.log(`[HR_ANALYTICS] Monthly query failed: ${e.message}`); }
+    } catch (e) { logger.info(`[HR_ANALYTICS] Monthly query failed: ${e.message}`); }
 
     return {
       kpis: {
@@ -1005,7 +1006,7 @@ export const getBulkAttendanceSummary = async (fromDate, toDate, allowedCompanie
       return result;
     } catch (err) {
       const msg = String(err.message);
-      console.log(`[BULK_ATT] TMS_DUTY_ROSTER_V attempt failed: ${msg}`);
+      logger.info(`[BULK_ATT] TMS_DUTY_ROSTER_V attempt failed: ${msg}`);
       if (!msg.includes("ORA-00942") && !msg.includes("ORA-01427") && !msg.includes("ORA-00904")) throw err;
     }
 

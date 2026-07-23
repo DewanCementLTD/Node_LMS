@@ -1,5 +1,6 @@
 import { getDirectConnection } from '../config/database.js';
 
+import { logger } from '../utils/logger.js';
 export const getDashboardData = async (card_no) => {
   let connection;
   try {
@@ -35,7 +36,7 @@ export const getDashboardData = async (card_no) => {
       );
       row = result.rows?.[0] ?? null;
     } catch (e) {
-      console.log(`[DASHBOARD] HR_EMP_MASTER + EMPLOYEE join failed for ${card_no}: ${e.message ?? e}`);
+      logger.info(`[DASHBOARD] HR_EMP_MASTER + EMPLOYEE join failed for ${card_no}: ${e.message ?? e}`);
       // Fallback: HR_EMP_MASTER alone (no EMPLOYEE join)
       try {
         const result = await connection.execute(
@@ -59,7 +60,7 @@ export const getDashboardData = async (card_no) => {
         );
         row = result.rows?.[0] ?? null;
       } catch (e2) {
-        console.log(`[DASHBOARD] HR_EMP_MASTER fallback also failed for ${card_no}: ${e2.message ?? e2}`);
+        logger.info(`[DASHBOARD] HR_EMP_MASTER fallback also failed for ${card_no}: ${e2.message ?? e2}`);
       }
     }
 
@@ -73,7 +74,7 @@ export const getDashboardData = async (card_no) => {
         const v = r.rows?.[0];
         return v ? Object.values(v)[0] ?? null : null;
       } catch (e) {
-        console.log(`[DASHBOARD] ${tag} lookup failed for value=${value}: ${e.message ?? e}`);
+        logger.info(`[DASHBOARD] ${tag} lookup failed for value=${value}: ${e.message ?? e}`);
         return null;
       }
     };
@@ -103,7 +104,7 @@ export const getDashboardData = async (card_no) => {
       ).rows?.[0];
       balance = balRow?.balance ?? null;
     } catch (e) {
-      console.log(`[DASHBOARD] balance lookup failed for ${card_no}: ${e.message ?? e}`);
+      logger.info(`[DASHBOARD] balance lookup failed for ${card_no}: ${e.message ?? e}`);
     }
 
     return { ...row, balance: balance ?? 0 };

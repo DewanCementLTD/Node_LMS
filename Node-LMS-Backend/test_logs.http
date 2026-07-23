@@ -1,0 +1,22 @@
+### -------------------------------------------------------------
+### DEDICATED LOG TESTING ROUTE (Triggers explicitly)
+### -------------------------------------------------------------
+### This route explicitly triggers a logger.warn and logger.error 
+### to demonstrate the caller file location and error stack trace!
+### It will also log the HTTP request to logs/app.log.
+GET http://localhost:8000/app/test-logs
+
+
+### -------------------------------------------------------------
+### PREFIX TESTING (Ensures separate files are generated)
+### -------------------------------------------------------------
+
+### 1. Test App Route (Should log HTTP request to logs/app.log)
+### Make sure to pass the required validation parameters so it gives 200 instead of 400!
+GET http://localhost:8000/app/version-check?platform=ANDROID&version=1.4.2&build=48
+
+### 2. Test Auth Route (Should log HTTP request to logs/auth.log)
+GET http://localhost:8000/auth/lookup/03363052865
+
+### 3. Test Recruitment Route (Should log HTTP request to logs/recruitment.log)
+GET http://localhost:8000/recruitment/jobs?admin_card_no=100001.1&compc=1&brnch=1

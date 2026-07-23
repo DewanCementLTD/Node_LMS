@@ -1,6 +1,7 @@
 import oracledb from "oracledb";
 import { getDirectConnection } from "../config/database.js";
 
+import { logger } from '../utils/logger.js';
 const OUT_FORMAT_OBJECT = 4002;
 const OUT_FORMAT_ARRAY = 4001;
 
@@ -48,7 +49,7 @@ const tryProgressive = async (connection, sqlTemplate, compc, brnch) => {
       throw e;
     }
   }
-  console.log(`[REFERENCE] All filter attempts failed: ${lastErr?.message}`);
+  logger.info(`[REFERENCE] All filter attempts failed: ${lastErr?.message}`);
   return [];
 };
 
@@ -461,7 +462,7 @@ export const getReportingOfficers = async (compc = null, brnch = null) => {
         continue;
       }
     }
-    console.log(`[REPORTING_OFFICERS] all attempts failed: ${lastErr?.message}`);
+    logger.info(`[REPORTING_OFFICERS] all attempts failed: ${lastErr?.message}`);
     return [];
   } finally {
     if (conn) await conn.close();
@@ -992,15 +993,15 @@ const ensureInterviewTables = async () => {
             BRNCH     NUMBER,
             IS_ACTIVE VARCHAR2(1) DEFAULT 'Y' NOT NULL
         )`);
-      console.log("[INTERVIEW] Created table INTERVIEW_TYPES");
+      logger.info("[INTERVIEW] Created table INTERVIEW_TYPES");
     } catch (e) {
-      if (!e.message.includes("ORA-00955")) console.error("[INTERVIEW] Could not create INTERVIEW_TYPES:", e.message);
+      if (!e.message.includes("ORA-00955")) logger.error("[INTERVIEW] Could not create INTERVIEW_TYPES:", e.message);
     }
     try {
       await conn.execute("CREATE SEQUENCE INTERVIEW_TYPES_SEQ START WITH 1 NOCACHE");
-      console.log("[INTERVIEW] Created sequence INTERVIEW_TYPES_SEQ");
+      logger.info("[INTERVIEW] Created sequence INTERVIEW_TYPES_SEQ");
     } catch (e) {
-      if (!e.message.includes("ORA-00955")) console.error("[INTERVIEW] Could not create sequence INTERVIEW_TYPES_SEQ:", e.message);
+      if (!e.message.includes("ORA-00955")) logger.error("[INTERVIEW] Could not create sequence INTERVIEW_TYPES_SEQ:", e.message);
     }
     
     // Seed the global (COMPC NULL) interview types once.
@@ -1014,10 +1015,10 @@ const ensureInterviewTables = async () => {
               VALUES (INTERVIEW_TYPES_SEQ.NEXTVAL, :d, NULL, NULL)
           `, { d }, { autoCommit: true });
         }
-        console.log(`[INTERVIEW] Seeded ${defaultTypes.length} global interview types`);
+        logger.info(`[INTERVIEW] Seeded ${defaultTypes.length} global interview types`);
       }
     } catch (e) {
-      console.error("[INTERVIEW] Could not seed types:", e.message);
+      logger.error("[INTERVIEW] Could not seed types:", e.message);
     }
     _interviewTablesReady = true;
   } finally {

@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 
+import { logger } from '../utils/logger.js';
 const LLM_MAX_RETRIES = 6;
 const LLM_RETRY_BACKOFF_BASE = 2; // seconds
 const MAX_OUTPUT_TOKENS = 8192;
@@ -319,12 +320,12 @@ export async function runLlm(cvText, jobDescription, detectedJobTitle, metricsOn
       if (kind === "config") {
         const dropped = degradeCaps(model, e.message);
         if (dropped) {
-          console.info(`Model ${model} rejected '${dropped}' -- disabled it and retrying`);
+          logger.info(`Model ${model} rejected '${dropped}' -- disabled it and retrying`);
           continue;
         }
       }
       lastError = e;
-      console.warn(`LLM attempt ${attempt}/${LLM_MAX_RETRIES} failed (${kind}): ${e.message.substring(0, 200)}`);
+      logger.warn(`LLM attempt ${attempt}/${LLM_MAX_RETRIES} failed (${kind}): ${e.message.substring(0, 200)}`);
       if (attempt < LLM_MAX_RETRIES) {
         await sleepBeforeRetry(e, kind, attempt);
       }
@@ -349,7 +350,7 @@ export async function runLlm(cvText, jobDescription, detectedJobTitle, metricsOn
       if (escalationsLeft > 0) {
         escalationsLeft--;
         maxTokens *= 2;
-        console.warn(`Response truncated/unparseable (finishReason=${finish}); retrying with maxOutputTokens=${maxTokens}`);
+        logger.warn(`Response truncated/unparseable (finishReason=${finish}); retrying with maxOutputTokens=${maxTokens}`);
         continue;
       }
       lastError = lastError || new Error(`Response truncated/empty (finishReason=${finish})`);

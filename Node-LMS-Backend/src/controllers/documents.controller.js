@@ -13,6 +13,7 @@
 import fs from 'fs';
 import path from 'path';
 
+import { logger } from '../utils/logger.js';
 import {
   listDocuments,
   createDocument,
@@ -63,7 +64,7 @@ export const listEmployeeDocuments = async (req, res) => {
     res.json({ items: await listDocuments(empcode) });
     // res.json( {"1": 12} );
   } catch (err) {
-    console.error('Error listing employee documents:', err);
+    logger.error('Error listing employee documents:', err);
     res.status(500).json({ detail: String(err.message ?? err) });
   }
 };
