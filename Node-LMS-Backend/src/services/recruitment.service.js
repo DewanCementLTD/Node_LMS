@@ -2326,6 +2326,27 @@ export const getCandidateCvPath = async (candidateId) => {
   }
 };
 
+export const getCandidateLatestJobId = async (candidateId) => {
+  let connection;
+  try {
+    connection = await getDirectConnection();
+    const result = await connection.execute(
+      `SELECT JOB_ID FROM RECRUITMENT_APPLICATIONS
+       WHERE CANDIDATE_ID = :cid
+       ORDER BY APP_ID DESC FETCH FIRST 1 ROWS ONLY`,
+      { cid: candidateId },
+      { outFormat: 4002 }
+    );
+    const jobId = result.rows?.[0]?.JOB_ID;
+    return jobId != null ? rToInt(jobId) : null;
+  } catch (err) {
+    return null;
+  } finally {
+    await connection?.close();
+  }
+};
+
+
 export const createApplicationForCandidate = async (candidateId, jobId, source = null) => {
   // Port of create_application_for_candidate + _find_or_create_application_tx:
   // REUSE the candidate's existing application for this job if one exists (so a

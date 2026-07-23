@@ -596,37 +596,60 @@ export const uploadCandidateCv = async (req, res, next) => {
     const file = req.file;
     if (!file) return res.status(400).json({ detail: "No file uploaded" });
 
-    if (!(await _requireCandidateAccess(req, res, candidate_id))) return;
+    const cand = await _requireCandidateAccess(req, res, candidate_id);
+    if (!cand) return;
 
     const ext = path.extname(file.originalname || "").replace(/^\./, "").toLowerCase();
-    const allowed = new Set(["pdf", "doc", "docx", "txt", "rtf"]);
-    if (!allowed.has(ext)) {
-      return res.status(400).json({ detail: `CV must be one of: ${[...allowed].sort().join(", ")}` });
+    if (ext !== "pdf") {
+      return res.status(400).json({ detail: "Only PDF CVs can be AI-screened" });
     }
-    
-    const target = await recruitmentService.candidateCvTarget(candidate_id, ext);
-    if (!target) return res.status(404).json({ detail: "Candidate not found" });
-    
+
+    let job_id = req.query.job_id || req.body?.job_id ? parseInt(req.query.job_id || req.body?.job_id, 10) : null;
+    if (!job_id) {
+      job_id = await recruitmentService.getCandidateLatestJobId(candidate_id);
+    }
+
+    let dirs;
+    if (job_id) {
+      dirs = await recruitmentService.jobCvDirs(job_id);
+    }
+    if (!dirs) {
+      dirs = await recruitmentService.poolCvDirs(cand.compc, cand.brnch);
+    }
+
+    fs.mkdirSync(dirs.buffer_dir, { recursive: true });
+
     try {
-      fs.mkdirSync(target.abs_dir, { recursive: true });
-      
-      const old = target.old_abs_path;
-      if (old && old !== target.abs_path && fs.existsSync(old)) {
-        try { fs.unlinkSync(old); } catch (e) {}
-      }
-      
-      fs.writeFileSync(target.abs_path, file.buffer);
+      fs.writeFileSync(path.join(dirs.buffer_dir, "_scope.json"), JSON.stringify({
+        compc: dirs.compc,
+        brnch: dirs.brnch,
+        job_id: job_id ? parseInt(job_id, 10) : null
+      }));
     } catch (e) {
-      return res.status(500).json({ detail: `Failed to save CV: ${e.message}` });
+      // pass
     }
-    
-    const fname = path.basename(target.abs_path);
-    const result = await recruitmentService.setCandidateCv(candidate_id, file.originalname || fname, target.rel_path);
+
+    const saved = safeCvFilename(file.originalname);
+    const absPath = path.join(dirs.buffer_dir, saved);
+    fs.writeFileSync(absPath, file.buffer);
+
+    const { DOCS_BASE } = await import('../services/documents.service.js');
+    const relPath = path.relative(DOCS_BASE, absPath);
+
+    const result = await recruitmentService.setCandidateCv(candidate_id, file.originalname || saved, relPath);
     if (result.status === "error") {
       return res.status(400).json({ detail: result.message });
     }
-    
-    res.json({ status: "success", cv_file_name: file.originalname || fname });
+
+    res.json({
+      status: "success",
+      queued: true,
+      candidate_id: parseInt(candidate_id, 10),
+      job_id: job_id || null,
+      cv_file_name: file.originalname || saved,
+      saved_as: saved,
+      message: "CV queued for AI screening and profile updating"
+    });
   } catch (err) {
     next(err);
   }
